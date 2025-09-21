@@ -9,6 +9,7 @@ permissions:
 jobs:
   run-autograding-tests:
     runs-on: [self-hosted, Linux, X64]
+    container: ghcr.io/computer-organization-at-ncku-ee/co-docker-env:latest
     if: github.actor != 'github-classroom[bot]'
     steps:
     - name: Checkout code
@@ -16,6 +17,7 @@ jobs:
     - name: Pre-setup
       run: |
         git submodule update --init --recursive
+        pwd && ls
         cd riscv-tests/isa
         make -j
     - name: RV32I unit tests with riscv-tests
