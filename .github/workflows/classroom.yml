@@ -27,7 +27,9 @@ jobs:
           mkdir build && cd build
           cmake ..
           make -j
-        command: ctest
+        command: |
+          cd build
+          ctest
         timeout: 10
         max-score: 80
     - name: Autograding Reporter
