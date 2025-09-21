@@ -28,7 +28,9 @@ jobs:
         setup-command: |
           mkdir build && cd build
           cmake ..
-        command: make -j
+        command: |
+          cd build
+          make -j
         timeout: 10
         max-score: 10
     - name: RV32I unit tests with riscv-tests
@@ -36,8 +38,9 @@ jobs:
       uses: classroom-resources/autograding-command-grader@v1
       with:
         test-name: RV32I unit tests with riscv-tests
-        setup-command: cd build
-        command: ctest
+        command: |
+          cd build
+          ctest
         timeout: 10
         max-score: 70
     - name: Autograding Reporter
@@ -46,4 +49,4 @@ jobs:
         RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.resu}}"
         ISS-COMPILATION-TEST_RESULTS: "${{steps.iss-compilation-test.outputs.result}}"
       with:
-        runners: rv32i-unit-tests-with-riscv-tests.iss-compilation-test
+        runners: rv32i-unit-tests-with-riscv-tests,iss-compilation-test
