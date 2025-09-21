@@ -1,0 +1,4 @@
+[submodule "riscv-tests"]
+	path = riscv-tests
+	url = https://github.com/Computer-Organization-at-NCKU-EE/riscv-tests.git
+	branch = no-priv
