@@ -20,23 +20,30 @@ jobs:
         pwd && ls
         cd riscv-tests/isa
         make -j
+    - name: ISS compilation test
+      id: iss-compilation-test
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: ISS compilation test
+        setup-command: |
+          mkdir build && cd build
+          cmake ..
+        command: make -j
+        timeout: 10
+        max-score: 10
     - name: RV32I unit tests with riscv-tests
       id: rv32i-unit-tests-with-riscv-tests
       uses: classroom-resources/autograding-command-grader@v1
       with:
         test-name: RV32I unit tests with riscv-tests
-        setup-command: |
-          mkdir build && cd build
-          cmake ..
-          make -j
-        command: |
-          cd build
-          ctest
+        setup-command: cd build
+        command: ctest
         timeout: 10
-        max-score: 80
+        max-score: 70
     - name: Autograding Reporter
       uses: classroom-resources/autograding-grading-reporter@v1
       env:
-        RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.result}}"
+        RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.resu}}"
+        ISS-COMPILATION-TEST_RESULTS: "${{steps.iss-compilation-test.outputs.result}}"
       with:
-        runners: rv32i-unit-tests-with-riscv-tests
+        runners: rv32i-unit-tests-with-riscv-tests.iss-compilation-test
