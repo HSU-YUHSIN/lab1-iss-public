@@ -46,7 +46,7 @@ jobs:
     - name: Autograding Reporter
       uses: classroom-resources/autograding-grading-reporter@v1
       env:
-        RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.resu}}"
+        RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.result}}"
         ISS-COMPILATION-TEST_RESULTS: "${{steps.iss-compilation-test.outputs.result}}"
       with:
         runners: rv32i-unit-tests-with-riscv-tests,iss-compilation-test
