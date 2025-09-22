@@ -33,20 +33,108 @@ jobs:
           make -j
         timeout: 10
         max-score: 10
-    - name: RV32I unit tests with riscv-tests
+    - name: RV32I OP
       id: rv32i-unit-tests-with-riscv-tests
       uses: classroom-resources/autograding-command-grader@v1
       with:
         test-name: RV32I unit tests with riscv-tests
         command: |
           cd build
-          ctest
+          ctest -R "^OP_[a-z]+"
         timeout: 10
-        max-score: 70
+        max-score: 15
+    - name: RV32I OPIMM
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^OPIMM_[a-z]+"
+        timeout: 10
+        max-score: 15
+    - name: RV32I LOAD
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^LOAD_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I STORE
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^STORE_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I BRANCH
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^BRANCH_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I JAL
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^JAL_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I JALR
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^JALR_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I LUI
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^LUI_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I AUIPC
+      id: rv32i-unit-tests-with-riscv-tests
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I unit tests with riscv-tests
+        command: |
+          cd build
+          ctest -R "^AUIPC_[a-z]+"
+        timeout: 10
+        max-score: 4
     - name: Autograding Reporter
       uses: classroom-resources/autograding-grading-reporter@v1
       env:
-        RV32I-UNIT-TESTS-WITH-RISCV-TESTS_RESULTS: "${{steps.rv32i-unit-tests-with-riscv-tests.outputs.result}}"
         ISS-COMPILATION-TEST_RESULTS: "${{steps.iss-compilation-test.outputs.result}}"
+        RV32I-OP_RESULTS: "${{steps.rv32i-op.outputs.result}}"
+        RV32I-OPIMM_RESULTS: "${{steps.rv32i-opimm.outputs.result}}"
+        RV32I-LOAD_RESULTS: "${{steps.rv32i-load.outputs.result}}"
+        RV32I-STORE_RESULTS: "${{steps.rv32i-store.outputs.result}}"
+        RV32I-BRANCH_RESULTS: "${{steps.rv32i-branch.outputs.result}}"
+        RV32I-JAL_RESULTS: "${{steps.rv32i-jal.outputs.result}}"
+        RV32I-JALR_RESULTS: "${{steps.rv32i-jalr.outputs.result}}"
+        RV32I-LUI_RESULTS: "${{steps.rv32i-lui.outputs.result}}"
+        RV32I-AUIPC_RESULTS: "${{steps.rv32i-auipc.outputs.result}}"
       with:
         runners: rv32i-unit-tests-with-riscv-tests,iss-compilation-test
