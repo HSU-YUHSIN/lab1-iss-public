@@ -54,7 +54,7 @@ Start at here...
 
 ### Question 6 (2 pts for bonus)
 
-**Why does the encoding formats for JAL and BRANCH instructions omit the least-significant bit (LSB, `imm[0]`) of immediates?**
+**Why do the encoding formats for JAL and BRANCH instructions omit the least-significant bit (LSB, `imm[0]`) of immediates?**
 
 #### Your Answer
 
