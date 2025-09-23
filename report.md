@@ -7,9 +7,9 @@ Please type your name and student ID at here:
 - Student Name: <your_chinese_name>
 - Student ID: <your_NCKU_student_ID>
 
-## Questions (10 pts)
+## Questions (20 pts)
 
-There are **five** questions, and it is 2 pts for each question.
+There are **five** questions, and it is **4 pts** for each question.
 
 ### Question 1 
 
@@ -52,7 +52,15 @@ Start at here...
 
 Start at here...
 
-## Reflection Report (10 pts)
+### Question 6 (2 pts for bonus)
+
+**Why does the encoding formats for JAL and BRANCH instructions omit the least-significant bit (LSB, `imm[0]`) of immediates?**
+
+#### Your Answer
+
+Start at here...
+
+## Reflection Report (0 pts)
 
 In this section, please write a short reflection about the lab:
 
