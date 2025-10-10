@@ -201,15 +201,15 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             switch (e) {
                 case inst_lb: 
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-                    write_x(self, rd, (uint32_t)sext32((uint32_t)buf[0], 8));
+                    write_x(self, rd, (uint32_t)sext32((uint32_t)(uint8_t)buf[0], 8));
                     break;
                 case inst_lbu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-                    write_x(self, rd, (uint32_t)buf[0]);
+                    write_x(self, rd, (uint32_t)(uint8_t)buf[0]);
                     break;
                 case inst_lh:
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)sext32((uint32_t)buf[0] | ((uint32_t)buf[1] << 8), 16));
+                    write_x(self, rd, (uint32_t)sext32(uint32_t)((uint16_t)(uint8_t)buf[0] | (uint16_t)((uint8_t)buf[1] << 8), 16));
                     break;
                 case inst_lhu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
@@ -217,7 +217,8 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     break;
                 case inst_lw: 
                     MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
-                    write_x(self, rd, (uint32_t)(buf[0] | ((uint32_t)buf[1] << 8) | ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24)));
+                    write_x(self, rd, (uint32_t)(uint8_t)(buf[0] | ((uint32_t)(uint8_t)buf[1] << 8) 
+                        | ((uint32_t)(uint8_t)buf[2] << 16) | ((uint32_t)(uint8_t)buf[3] << 24)));
                     break;
                 default: break;
             }
@@ -262,7 +263,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                 case inst_beq: take = (x1 == x2); break;
                 case inst_bne: take = (x1 != x2); break;
                 case inst_blt: take = ((int32_t)x1 < (int32_t)x2); break;
-                case inst_bge: take = ((int32_t)x1 >= (int_32_t)x2); break;
+                case inst_bge: take = ((int32_t)x1 >= (int32_t)x2); break;
                 case inst_bltu: take = (x1 < x2); break;
                 case inst_bgeu: take = (x1 >= x2); break;
                 default: break;
