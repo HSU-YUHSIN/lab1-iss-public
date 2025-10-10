@@ -17,7 +17,7 @@ static inline int32_t sext32(uint32_t x, int bits) {
 }
 
 static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
-    if (rd != 0 && rd < 32) self->arch_state.x[rd] = val;
+    if (rd != 0 && rd < 32) self->arch_state.gpr[rd] = val;
 }
 
 /* -------- fetch -------- */
@@ -119,8 +119,8 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
     uint32_t rs1 = f.R_TYPE.rs1;
     uint32_t rs2 = f.R_TYPE.rs2;
     uint32_t rd  = f.R_TYPE.rd;
-    uint32_t x1  = self->arch_state.x[rs1];
-    uint32_t x2  = self->arch_state.x[rs2];
+    uint32_t x1  = self->arch_state.gpr[rs1];
+    uint32_t x2  = self->arch_state.gpr[rs2];
 
     switch (e) {
         /* R-type ALU */
@@ -269,7 +269,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
     }
 
     /* x0 hard-wired to zero */
-    self->arch_state.x[0] = 0;
+    self->arch_state.gpr[0] = 0;
 }
 
 /* -------- commit PC -------- */
@@ -305,7 +305,3 @@ int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
 
-
-int Core_add_device(Core *self, mmap_unit_t new_device) {
-    return MemoryMap_add_device(&self->mem_map, new_device);
-}
