@@ -16,7 +16,7 @@ static inline int32_t sext32(uint32_t x, int bits) {
 }
 
 static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
-    if (rd != 0) self->arch_state.x[rd] = val;
+    if (rd != 0 && rd < 32) self->arch_state.x[rd] = val;
 }
 
 /* -------- fetch -------- */
