@@ -90,8 +90,8 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x5: ret = inst_bge; break;
             case 0x6: ret = inst_bltu; break;
             case 0x7: ret = inst_bgeu; break;
-            break;  
         }
+        break;
     }
     case JAL: {
         ret = inst_jal;
@@ -158,7 +158,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
             write_x(self, rd, (int32_t)x1 < imm); break;
         }
-        case inst_sltiui: {
+        case inst_sltiu: {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
             write_x(self, rd, x1 < (uint32_t)imm); break;
         }
@@ -175,16 +175,19 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             write_x(self, rd, x1 & (uint32_t)imm); break;
         }
         case inst_slli: {
-            int32_t imm = sext32(f.I_TYPE.imm, 12);
-            write_x(self, rd, x1 << sh); break;
+            uint32_t sh = f.I_TYPE.imm & 0x1F;
+            write_x(self, rd, x1 << sh);
+            break;
         }
         case inst_srli: {
-            int32_t imm = sext32(f.I_TYPE.imm, 12);
-            write_x(self, rd, x1 >> sh); break;
+            uint32_t sh = f.I_TYPE.imm & 0x1F;
+            write_x(self, rd, x1 >> sh);
+            break;
         }
         case inst_srai: {
-            int32_t imm = sext32(f.I_TYPE.imm, 12);
-            write_x(self, (uint32_t)((int32_t)x1 >> sh)); break;
+            uint32_t sh = f.I_TYPE.imm & 0x1F;
+            write_x(self, rd, (uint32_t)((int32_t)x1 >> sh));
+            break;
         }
 
 
@@ -204,9 +207,9 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
                     write_x(self, rd, (uint32_t)buf[0]);
                     break;
-                case inst_lh: 
+                case inst_lh:
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)sext32(buf[0] | (buf[1] << 8), 16);
+                    write_x(self, rd, (uint32_t)sext32((uint32_t)buf[0] | ((uint32_t)buf[1] << 8), 16));
                     break;
                 case inst_lhu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
@@ -257,11 +260,11 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
             switch (e) {
                 case inst_beq: take = (x1 == x2); break;
-                case inst_beq: take = (x1 != x2); break;
-                case inst_beq: take = ((inst32_t)x1 < (inst32_t)x2); break;
-                case inst_beq: take = ((inst32_t)x1 >= (inst_32_t)x2); break;
-                case inst_beq: take = (x1 < x2); break;
-                case inst_beq: take = (x1 >= x2); break;
+                case inst_bne: take = (x1 != x2); break;
+                case inst_blt: take = ((inst32_t)x1 < (inst32_t)x2); break;
+                case inst_bge: take = ((inst32_t)x1 >= (inst_32_t)x2); break;
+                case inst_bltu: take = (x1 < x2); break;
+                case inst_bgeu: take = (x1 >= x2); break;
                 default: break;
             }
             if (take) self->new_pc = pc + imm;
@@ -269,22 +272,25 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         }
 
         case inst_jal: {
-            int32_t imm = sext32((f.J_TYPE.imm_20 << 20) | (f.J_TYPE.imm_19_12 << 12) | (f.J_TYPE.imm_11 << 11) | (f.J_TYPE.imm_10_1 << 1), 21);
-            self->arch_state.current_pc
+            int32_t imm = sext32((f.J_TYPE.imm_20 << 20) |
+                         (f.J_TYPE.imm_19_12 << 12) |
+                         (f.J_TYPE.imm_11 << 11) |
+                         (f.J_TYPE.imm_10_1 << 1), 21);
+            write_x(self, rd, self->arch_state.current_pc + 4);
+            self->new_pc = self->arch_state.current_pc + imm;
             break;
         }
         case inst_jalr: {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
-            uint32_t target = (x1 + imm) & ~1u; // clear bit 0
-            write_x(self, rd, pc + 4);
+            uint32_t target = (x1 + imm) & ~1u;
+            write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
             break;
         }
 
         // U_TYPE
         case inst_lui: write_x(self, rd, (f.U_TYPE.imm_31_12 << 12)); break;
-        case inst_auipc: write_x(self, rd, pc + (f.U_TYPE.imm_31_12 << 12)); break;
-
+        case inst_auipc: write_x(self, rd, self->arch_state.current_pc + (f.U_TYPE.imm_31_12 << 12)); break;
         default: break;
     }
 }
