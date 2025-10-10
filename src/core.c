@@ -12,10 +12,10 @@
 // ISS Fetch stage
 static inst_fields_t Core_fetch(Core *self) {
     // fetch instruction according to self->arch_state.current_pc
-    byte_t inst_in_bytes[4] = {};
+    byte_t inst_in_bytes[4] = {0};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
     // transformation
-    inst_fields_t ret = {};
+    inst_fields_t ret = (inst_fields_t){0};
     ret.raw |= (reg_t)inst_in_bytes[0];
     ret.raw |= (reg_t)inst_in_bytes[1] << 8;
     ret.raw |= (reg_t)inst_in_bytes[2] << 16;
@@ -25,7 +25,7 @@ static inst_fields_t Core_fetch(Core *self) {
 
 // ISS decode stage
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
-    inst_enum_t ret = {};
+    inst_enum_t ret = (inst_enum_t){0};
 
     // helper local variables
     reg_t opcode = inst_fields.R_TYPE.opcode;
@@ -196,7 +196,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         case inst_lbu: case inst_lhu: {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
             uint32_t addr = x1 + imm;
-            byte_t buf[4] = {};
+            byte_t buf[4] = {0};
 
             switch (e) {
                 case inst_lb: 
@@ -213,11 +213,11 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     break;
                 case inst_lhu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)(buf[0] | (buf[1] << 8)));
+                    write_x(self, rd, (uint32_t)(buf[0] | (uint32_t)(buf[1] << 8)));
                     break;
                 case inst_lw: 
                     MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
-                    write_x(self, rd, (uint32_t)(buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24)));
+                    write_x(self, rd, (uint32_t)(buf[0] | (uint32_t)(buf[1] << 8) | (uint32_t)(buf[2] << 16) | (uint32_t)(buf[3] << 24)));
                     break;
                 default: break;
             }
@@ -261,13 +261,13 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             switch (e) {
                 case inst_beq: take = (x1 == x2); break;
                 case inst_bne: take = (x1 != x2); break;
-                case inst_blt: take = ((inst32_t)x1 < (inst32_t)x2); break;
-                case inst_bge: take = ((inst32_t)x1 >= (inst_32_t)x2); break;
+                case inst_blt: take = ((int32_t)x1 < (inst32_t)x2); break;
+                case inst_bge: take = ((int32_t)x1 >= (inst_32_t)x2); break;
                 case inst_bltu: take = (x1 < x2); break;
                 case inst_bgeu: take = (x1 >= x2); break;
                 default: break;
             }
-            if (take) self->new_pc = pc + imm;
+            if (take) self->new_pc = self->arch_state.current_pc + imm;
             break;
         }
 
