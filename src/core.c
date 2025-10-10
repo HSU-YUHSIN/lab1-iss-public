@@ -1,4 +1,4 @@
-#include "core.h"
+##include "core.h"
 
 #include "inst.h"
 #include "tick.h"
@@ -12,10 +12,13 @@
 
 // ISS Fetch stage
 static inst_fields_t Core_fetch(Core *self) {
+    // Assert 4-byte alignment if C extension is not supported
+    assert((self->arch_state.current_pc & 0x3u) == 0 && "misaligned PC (no C extension)");
+
     // fetch instruction according to self->arch_state.current_pc
     byte_t inst_in_bytes[4] = {0};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
-    // transformation
+    // transformation (little-endian)
     inst_fields_t ret = (inst_fields_t){0};
     ret.raw |= (reg_t)inst_in_bytes[0];
     ret.raw |= (reg_t)inst_in_bytes[1] << 8;
@@ -34,31 +37,26 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     reg_t rs2    = inst_fields.R_TYPE.rs2;
     reg_t rd     = inst_fields.R_TYPE.rd;
     reg_t func3  = inst_fields.R_TYPE.func3;
-    reg_t func7  = inst_fields.R_TYPE.func7;
+    reg_t func7  = inst_fields.R_TYPE.func7; // for I-type shifts: imm[11:5]
 
-    // decode common part
-    // TODO
+    (void)rs1; (void)rs2; (void)rd; // not used here, keep for possible diagnostics
+
     switch (opcode) {
-    case OP: { // R-type
+    case OP: { // R-type (register-register)
         switch (func3) {
             case 0x0: ret = (func7 == 0x20) ? inst_sub : inst_add; break; // sub or add
+            case 0x1: ret = inst_sll; break;                              // SLL (reg)
             case 0x2: ret = inst_slt; break;
             case 0x3: ret = inst_sltu; break;
             case 0x4: ret = inst_xor; break;
+            case 0x5: ret = (func7 == 0x20) ? inst_sra : inst_srl; break; // SRA/SRL (reg)
             case 0x6: ret = inst_or; break;
             case 0x7: ret = inst_and; break;
-            case 0x1 : // SLLI: imm[11:5] must be 0x00 in RV32I
-+                ret = (func7 == 0x00) ? inst_slli : inst_illegal;
-+                break;
-+            case 0x5 : // SRLI/SRAI: imm[11:5] 0x00 -> SRLI, 0x20 -> SRAI
-+                if (func7 == 0x00) ret = inst_srli;
-+                else if (func7 == 0x20) ret = inst_srai;
-+                else ret = inst_illegal;
-+                break;
+            default:  ret = inst_illegal; break;
         }
         break;
     }
-    case OP_IMM: { // I-type
+    case OP_IMM: { // I-type (register-immediate)
         switch (func3) {
             case 0x0 : ret = inst_addi; break;
             case 0x2 : ret = inst_slti; break;
@@ -66,8 +64,10 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x4 : ret = inst_xori; break;
             case 0x6 : ret = inst_ori; break;
             case 0x7 : ret = inst_andi; break;
-            case 0x1 : ret = inst_slli; break;
-            case 0x5 : ret = (func7 == 0x20) ? inst_srai : inst_srli; break; // check shamt and funct7 == 0
+            // Shift-immediates: validate imm[11:5] (== func7) per RV32I
+            case 0x1 : ret = (func7 == 0x00) ? inst_slli : inst_illegal; break;                                 // SLLI
+            case 0x5 : ret = (func7 == 0x20) ? inst_srai : (func7 == 0x00 ? inst_srli : inst_illegal); break;   // SRAI/SRLI
+            default  : ret = inst_illegal; break;
         }
         break;
     }
@@ -78,6 +78,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x2: ret = inst_lw; break;
             case 0x4: ret = inst_lbu; break;
             case 0x5: ret = inst_lhu; break;
+            default:  ret = inst_illegal; break;
         }
         break;
     }
@@ -86,6 +87,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x0: ret = inst_sb; break;
             case 0x1: ret = inst_sh; break;
             case 0x2: ret = inst_sw; break;
+            default:  ret = inst_illegal; break;
         }
         break;
     }
@@ -97,6 +99,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x5: ret = inst_bge; break;
             case 0x6: ret = inst_bltu; break;
             case 0x7: ret = inst_bgeu; break;
+            default:  ret = inst_illegal; break;
         }
         break;
     }
@@ -116,7 +119,8 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         ret = inst_lui;
         break;
     }
-        default: ret = inst_illegal; break;
+    default:
+        ret = inst_illegal; break;
     }
 
     return ret;
@@ -126,38 +130,37 @@ static inline int32_t sext32(uint32_t x, int bits) {
     int shift = 32 - bits;
     return (int32_t)(x << shift) >> shift;
 }
-static inline void write_x(Core *self, uint32_t rd, uint32_t val) { 
+
+static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
     if (rd != 0) self->arch_state.x[rd] = val;
 }
 
 // ISS execute and commit stage (two-in-one)
 static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
     // set self->new_pc to a default value by PC+4
-    // it might be overridden when there is a branch instruction
+    // it might be overridden when there is a branch/jump instruction
     self->new_pc = self->arch_state.current_pc + 4;
 
-    // TODO
-
-    //uint32_t pc = self->arch_state.current_pc + 4;
     uint32_t rs1 = f.R_TYPE.rs1;
     uint32_t rs2 = f.R_TYPE.rs2;
-    uint32_t rd = f.R_TYPE.rd;
-    uint32_t x1 = self->arch_state.x[rs1];
-    uint32_t x2 = self->arch_state.x[rs2];
+    uint32_t rd  = f.R_TYPE.rd;
+    uint32_t x1  = self->arch_state.x[rs1];
+    uint32_t x2  = self->arch_state.x[rs2];
 
     switch (e) {
-        // ALU
+        // ALU (R-type)
         case inst_add: write_x(self, rd, x1 + x2); break;
         case inst_sub: write_x(self, rd, x1 - x2); break;
-        case inst_sll: write_x(self, rd, x1 <<(x2 & 31)); break;
+        case inst_sll: write_x(self, rd, x1 << (x2 & 31)); break;
         case inst_slt: write_x(self, rd, (int32_t)x1 < (int32_t)x2); break;
         case inst_sltu: write_x(self, rd, x1 < x2); break;
         case inst_xor: write_x(self, rd, x1 ^ x2); break;
         case inst_srl: write_x(self, rd, x1 >> (x2 & 31)); break;
         case inst_sra: write_x(self, rd, (uint32_t)((int32_t)x1 >> (x2 & 31))); break;
-        case inst_or: write_x(self, rd, x1 | x2); break;
+        case inst_or:  write_x(self, rd, x1 | x2); break;
         case inst_and: write_x(self, rd, x1 & x2); break;
 
+        // ALU (I-type)
         case inst_addi: {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
             write_x(self, rd, x1 + imm); break;
@@ -198,35 +201,37 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             break;
         }
 
-
         // LOAD/STORE
-        case inst_lb: case inst_lh: case inst_lw: 
+        case inst_lb: case inst_lh: case inst_lw:
         case inst_lbu: case inst_lhu: {
             int32_t imm = sext32(f.I_TYPE.imm, 12);
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {0};
 
+            // Alignment checks (RV32I)
             if ((e == inst_lh || e == inst_lhu) && (addr & 1)) { assert(!"misaligned halfword load"); }
             if (e == inst_lw && (addr & 3)) { assert(!"misaligned word load"); }
- 
 
             switch (e) {
-                case inst_lb: 
+                case inst_lb:
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
                     write_x(self, rd, (uint32_t)sext32((uint32_t)(uint8_t)buf[0], 8));
                     break;
-                case inst_lbu: 
+                case inst_lbu:
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
                     write_x(self, rd, (uint32_t)(uint8_t)buf[0]);
                     break;
                 case inst_lh:
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)sext32((uint32_t)((uint16_t)(uint8_t)buf[0] | ((uint16_t)(uint8_t)buf[1] << 8)), 16));
+                    write_x(self, rd, (uint32_t)sext32(
+                        (uint32_t)((uint16_t)(uint8_t)buf[0] | ((uint16_t)(uint8_t)buf[1] << 8)), 16));
                     break;
-                case inst_lhu: 
+                case inst_lhu:
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)((uint16_t)(uint8_t)buf[0] | ((uint16_t)(uint8_t)buf[1] << 8)));
-                case inst_lw: 
+                    write_x(self, rd, (uint32_t)((uint16_t)(uint8_t)buf[0] |
+                                                 ((uint16_t)(uint8_t)buf[1] << 8)));
+                    break;
+                case inst_lw:
                     MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
                     write_x(self, rd,
                         ((uint32_t)(uint8_t)buf[0])        |
@@ -245,6 +250,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             uint32_t addr = x1 + imm;
             byte_t buf[4];
 
+            // Alignment checks
             if (e == inst_sh && (addr & 1)) { assert(!"misaligned halfword store"); }
             if (e == inst_sw && (addr & 3)) { assert(!"misaligned word store"); }
 
@@ -253,12 +259,12 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     buf[0] = (byte_t)(x2 & 0xFF);
                     MemoryMap_generic_store(&self->mem_map, addr, 1, buf);
                     break;
-                case inst_sh: 
+                case inst_sh:
                     buf[0] = (byte_t)(x2 & 0xFF);
                     buf[1] = (byte_t)((x2 >> 8) & 0xFF);
                     MemoryMap_generic_store(&self->mem_map, addr, 2, buf);
                     break;
-                case inst_sw: 
+                case inst_sw:
                     buf[0] = (byte_t)(x2 & 0xFF);
                     buf[1] = (byte_t)((x2 >> 8) & 0xFF);
                     buf[2] = (byte_t)((x2 >> 16) & 0xFF);
@@ -273,14 +279,18 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         // BRANCH / JUMP
         case inst_beq: case inst_bne: case inst_blt:
         case inst_bge: case inst_bltu: case inst_bgeu: {
-            int32_t imm = sext32((f.B_TYPE.imm_12 << 12) | (f.B_TYPE.imm_11 << 11) | (f.B_TYPE.imm_10_5 << 5) | (f.B_TYPE.imm_4_1 << 1), 13);
+            int32_t imm = sext32(
+                (f.B_TYPE.imm_12 << 12) |
+                (f.B_TYPE.imm_11 << 11) |
+                (f.B_TYPE.imm_10_5 << 5) |
+                (f.B_TYPE.imm_4_1  << 1), 13);
             bool take = false;
 
             switch (e) {
-                case inst_beq: take = (x1 == x2); break;
-                case inst_bne: take = (x1 != x2); break;
-                case inst_blt: take = ((int32_t)x1 < (int32_t)x2); break;
-                case inst_bge: take = ((int32_t)x1 >= (int32_t)x2); break;
+                case inst_beq:  take = (x1 == x2); break;
+                case inst_bne:  take = (x1 != x2); break;
+                case inst_blt:  take = ((int32_t)x1 <  (int32_t)x2); break;
+                case inst_bge:  take = ((int32_t)x1 >= (int32_t)x2); break;
                 case inst_bltu: take = (x1 < x2); break;
                 case inst_bgeu: take = (x1 >= x2); break;
                 default: break;
@@ -290,10 +300,11 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         }
 
         case inst_jal: {
-            int32_t imm = sext32((f.J_TYPE.imm_20 << 20) |
-                         (f.J_TYPE.imm_19_12 << 12) |
-                         (f.J_TYPE.imm_11 << 11) |
-                         (f.J_TYPE.imm_10_1 << 1), 21);
+            int32_t imm = sext32(
+                (f.J_TYPE.imm_20     << 20) |
+                (f.J_TYPE.imm_19_12  << 12) |
+                (f.J_TYPE.imm_11     << 11) |
+                (f.J_TYPE.imm_10_1   << 1), 21);
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = self->arch_state.current_pc + imm;
             break;
@@ -307,13 +318,22 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         }
 
         // U_TYPE
-        case inst_lui: write_x(self, rd, (f.U_TYPE.imm_31_12 << 12)); break;
-        case inst_auipc: write_x(self, rd, self->arch_state.current_pc + (f.U_TYPE.imm_31_12 << 12)); break;
+        case inst_lui:
+            write_x(self, rd, (f.U_TYPE.imm_31_12 << 12));
+            break;
+        case inst_auipc:
+            write_x(self, rd, self->arch_state.current_pc + (f.U_TYPE.imm_31_12 << 12));
+            break;
+
         case inst_illegal:
             assert(!"illegal instruction");
             break;
-        default: break;
+
+        default:
+            break;
     }
+
+    // Keep x0 hard-wired to zero (spec requirement)
     self->arch_state.x[0] = 0;
 }
 
@@ -324,7 +344,7 @@ static void Core_update_pc(Core *self) {
 DECLARE_TICK_TICK(Core) {
     Core *self_               = container_of(self, Core, super);
     inst_fields_t inst_fields = Core_fetch(self_);
-    inst_enum_t inst_enum     = Core_decode(self_, inst_fields);
+    inst_enum_t  inst_enum    = Core_decode(self_, inst_fields);
     Core_execute(self_, inst_fields, inst_enum);
     Core_update_pc(self_);
 }
@@ -339,7 +359,7 @@ void Core_ctor(Core *self) {
     // initialize base class (Tick)
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
-    self->super.vtbl                  = &vtbl;
+    self->super.vtbl = &vtbl;
 }
 
 void Core_dtor(Core *self) {
