@@ -136,20 +136,20 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         case inst_and: write_x(self, rd, x1 & x2); break;
 
         /* I-type ALU */
-        case inst_addi: { int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, x1 + imm); break; }
-        case inst_slti: { int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, (int32_t)x1 < imm); break; }
-        case inst_sltiu:{ int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, x1 < (uint32_t)imm); break; }
-        case inst_xori: { int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
-        case inst_ori:  { int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, x1 | (uint32_t)imm); break; }
-        case inst_andi: { int32_t imm = sext32(f.I_TYPE.imm, 12); write_x(self, rd, x1 & (uint32_t)imm); break; }
-        case inst_slli: { uint32_t sh = f.I_TYPE.imm & 0x1F; write_x(self, rd, x1 << sh); break; }
-        case inst_srli: { uint32_t sh = f.I_TYPE.imm & 0x1F; write_x(self, rd, x1 >> sh); break; }
-        case inst_srai: { uint32_t sh = f.I_TYPE.imm & 0x1F; write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
+        case inst_addi: { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 + imm); break; }
+        case inst_slti: { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, (int32_t)x1 < imm); break; }
+        case inst_sltiu:{ int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 < (uint32_t)imm); break; }
+        case inst_xori: { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
+        case inst_ori:  { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 | (uint32_t)imm); break; }
+        case inst_andi: { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 & (uint32_t)imm); break; }
+        case inst_slli: { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, x1 << sh); break; }
+        case inst_srli: { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, x1 >> sh); break; }
+        case inst_srai: { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
 
         /* LOAD */
         case inst_lb: case inst_lh: case inst_lw:
         case inst_lbu: case inst_lhu: {
-            int32_t imm = sext32(f.I_TYPE.imm, 12);
+            int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {0};
 
@@ -187,7 +187,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* STORE */
         case inst_sb: case inst_sh: case inst_sw: {
-            int32_t imm = sext32(((f.S_TYPE.imm_hi << 5) | f.S_TYPE.imm_lo), 12);
+            int32_t imm = sext32(((f.S_TYPE.imm_11_5 << 5) | f.S_TYPE.imm_4_0), 12);
             uint32_t addr = x1 + imm;
             byte_t buf[4];
 
@@ -248,7 +248,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             break;
         }
         case inst_jalr: {
-            int32_t imm = sext32(f.I_TYPE.imm, 12);
+            int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
             uint32_t target = (x1 + imm) & ~1u;
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
@@ -300,6 +300,11 @@ void Core_dtor(Core *self) {
     assert(self != NULL);
     MemoryMap_dtor(&self->mem_map);
 }
+
+int Core_add_device(Core *self, mmap_unit_t new_device) {
+    return MemoryMap_add_device(&self->mem_map, new_device);
+}
+
 
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
