@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <stdint.h>
 
 /* -------- helpers -------- */
 static inline int32_t sext32(uint32_t x, int bits) {
