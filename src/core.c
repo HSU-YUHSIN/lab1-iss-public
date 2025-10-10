@@ -209,16 +209,18 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     break;
                 case inst_lh:
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)sext32(uint32_t)((uint16_t)(uint8_t)buf[0] | (uint16_t)((uint8_t)buf[1] << 8), 16));
+                    write_x(self, rd, (uint32_t)sext32((uint32_t)((uint16_t)(uint8_t)buf[0] | ((uint16_t)(uint8_t)buf[1] << 8)), 16));
                     break;
                 case inst_lhu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)(buf[0] | ((uint32_t)buf[1] << 8)));
-                    break;
+                    write_x(self, rd, (uint32_t)((uint16_t)(uint8_t)buf[0] | ((uint16_t)(uint8_t)buf[1] << 8)));
                 case inst_lw: 
                     MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
-                    write_x(self, rd, (uint32_t)(uint8_t)(buf[0] | ((uint32_t)(uint8_t)buf[1] << 8) 
-                        | ((uint32_t)(uint8_t)buf[2] << 16) | ((uint32_t)(uint8_t)buf[3] << 24)));
+                    write_x(self, rd,
+                        ((uint32_t)(uint8_t)buf[0])        |
+                        ((uint32_t)(uint8_t)buf[1] << 8)   |
+                        ((uint32_t)(uint8_t)buf[2] << 16)  |
+                        ((uint32_t)(uint8_t)buf[3] << 24));
                     break;
                 default: break;
             }
