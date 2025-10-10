@@ -8,6 +8,7 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <stdbool.h>
 
 // ISS Fetch stage
 static inst_fields_t Core_fetch(Core *self) {
@@ -41,13 +42,19 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     case OP: { // R-type
         switch (func3) {
             case 0x0: ret = (func7 == 0x20) ? inst_sub : inst_add; break; // sub or add
-            case 0x1: ret = inst_sll; break;
             case 0x2: ret = inst_slt; break;
             case 0x3: ret = inst_sltu; break;
             case 0x4: ret = inst_xor; break;
-            case 0x5: ret = (func7 == 0x20) ? inst_sra : inst_srl; break;
             case 0x6: ret = inst_or; break;
             case 0x7: ret = inst_and; break;
+            case 0x1 : // SLLI: imm[11:5] must be 0x00 in RV32I
++                ret = (func7 == 0x00) ? inst_slli : inst_illegal;
++                break;
++            case 0x5 : // SRLI/SRAI: imm[11:5] 0x00 -> SRLI, 0x20 -> SRAI
++                if (func7 == 0x00) ret = inst_srli;
++                else if (func7 == 0x20) ret = inst_srai;
++                else ret = inst_illegal;
++                break;
         }
         break;
     }
@@ -109,6 +116,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         ret = inst_lui;
         break;
     }
+        default: ret = inst_illegal; break;
     }
 
     return ret;
@@ -198,6 +206,10 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {0};
 
+            if ((e == inst_lh || e == inst_lhu) && (addr & 1)) { assert(!"misaligned halfword load"); }
+            if (e == inst_lw && (addr & 3)) { assert(!"misaligned word load"); }
+ 
+
             switch (e) {
                 case inst_lb: 
                     MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
@@ -232,6 +244,9 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
             int32_t imm = sext32(((f.S_TYPE.imm_hi << 5) | f.S_TYPE.imm_lo), 12);
             uint32_t addr = x1 + imm;
             byte_t buf[4];
+
+            if (e == inst_sh && (addr & 1)) { assert(!"misaligned halfword store"); }
+            if (e == inst_sw && (addr & 3)) { assert(!"misaligned word store"); }
 
             switch (e) {
                 case inst_sb:
@@ -294,8 +309,12 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         // U_TYPE
         case inst_lui: write_x(self, rd, (f.U_TYPE.imm_31_12 << 12)); break;
         case inst_auipc: write_x(self, rd, self->arch_state.current_pc + (f.U_TYPE.imm_31_12 << 12)); break;
+        case inst_illegal:
+            assert(!"illegal instruction");
+            break;
         default: break;
     }
+    self->arch_state.x[0] = 0;
 }
 
 static void Core_update_pc(Core *self) {
