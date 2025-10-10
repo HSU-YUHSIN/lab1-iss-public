@@ -40,19 +40,19 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     switch (opcode) {
     case OP: { // R-type
         switch (func3) {
-            case 0x0: ret = (funct7 == 0x20) ? inst_sub : inst_add; break; // sub or add
+            case 0x0: ret = (func7 == 0x20) ? inst_sub : inst_add; break; // sub or add
             case 0x1: ret = inst_sll; break;
             case 0x2: ret = inst_slt; break;
             case 0x3: ret = inst_sltu; break;
             case 0x4: ret = inst_xor; break;
-            case 0x5: ret = (funct7 == 0x20) ? inst_sra : inst_srl; break;
+            case 0x5: ret = (func7 == 0x20) ? inst_sra : inst_srl; break;
             case 0x6: ret = inst_or; break;
             case 0x7: ret = inst_and; break;
         }
         break;
     }
     case OP_IMM: { // I-type
-        switch (funct3) {
+        switch (func3) {
             case 0x0 : ret = inst_addi; break;
             case 0x2 : ret = inst_slti; break;
             case 0x3 : ret = inst_sltiu; break;
@@ -60,12 +60,12 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x6 : ret = inst_ori; break;
             case 0x7 : ret = inst_andi; break;
             case 0x1 : ret = inst_slli; break;
-            case 0x5 : ret = (funct7 == 0x20) ? inst_srai : inst_srli; break; // check shamt and funct7 == 0
+            case 0x5 : ret = (func7 == 0x20) ? inst_srai : inst_srli; break; // check shamt and funct7 == 0
         }
         break;
     }
     case LOAD: {
-        switch (funct3) {
+        switch (func3) {
             case 0x0: ret = inst_lb; break;
             case 0x1: ret = inst_lh; break;
             case 0x2: ret = inst_lw; break;
@@ -75,21 +75,23 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         break;
     }
     case STORE: {
-        switch (funct3) {
+        switch (func3) {
             case 0x0: ret = inst_sb; break;
-            case 0x0: ret = inst_sh; break;
-            case 0x0: ret = inst_sw; break;
+            case 0x1: ret = inst_sh; break;
+            case 0x2: ret = inst_sw; break;
         }
         break;
     }
     case BRANCH: {
-        case 0x0: ret = inst_beq; break;
-        case 0x1: ret = inst_bne; break;
-        case 0x4: ret = inst_blt; break;
-        case 0x5: ret = inst_bge; break;
-        case 0x6: ret = inst_bltu; break;
-        case 0x7: ret = inst_bgeu; break;
-        break;
+        switch (func3) {
+            case 0x0: ret = inst_beq; break;
+            case 0x1: ret = inst_bne; break;
+            case 0x4: ret = inst_blt; break;
+            case 0x5: ret = inst_bge; break;
+            case 0x6: ret = inst_bltu; break;
+            case 0x7: ret = inst_bgeu; break;
+            break;  
+        }
     }
     case JAL: {
         ret = inst_jal;
@@ -140,10 +142,10 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         case inst_add: write_x(self, rd, x1 + x2); break;
         case inst_sub: write_x(self, rd, x1 - x2); break;
         case inst_sll: write_x(self, rd, x1 <<(x2 & 31)); break;
-        case inst_slt: write_x(self, rd, (int32_t)x1 < (int32_t)x2; break;
+        case inst_slt: write_x(self, rd, (int32_t)x1 < (int32_t)x2); break;
         case inst_sltu: write_x(self, rd, x1 < x2); break;
         case inst_xor: write_x(self, rd, x1 ^ x2); break;
-        case inst_srl: write_x(self, rd, x1 >> (x2 & 31); break;
+        case inst_srl: write_x(self, rd, x1 >> (x2 & 31)); break;
         case inst_sra: write_x(self, rd, (uint32_t)((int32_t)x1 >> (x2 & 31))); break;
         case inst_or: write_x(self, rd, x1 | x2); break;
         case inst_and: write_x(self, rd, x1 & x2); break;
@@ -188,8 +190,8 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         // LOAD/STORE
         case inst_lb: case inst_lh: case inst_lw: 
-        case inst_lbu case inst_lhu: {
-            inst32_t imm = sext32(f.I_TYPE.imm, 12);
+        case inst_lbu: case inst_lhu: {
+            int32_t imm = sext32(f.I_TYPE.imm, 12);
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {};
 
@@ -204,7 +206,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                     break;
                 case inst_lh: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-                    write_x(self, rd, (uint32_t)sext32(buf[0] | (buf[[1] << 8), 16);
+                    write_x(self, rd, (uint32_t)sext32(buf[0] | (buf[1] << 8), 16);
                     break;
                 case inst_lhu: 
                     MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
@@ -227,7 +229,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
             switch (e) {
                 case inst_sb:
-                    buf[0] = (byte_t)(0x2 & 0xFF);
+                    buf[0] = (byte_t)(x2 & 0xFF);
                     MemoryMap_generic_store(&self->mem_map, addr, 1, buf);
                     break;
                 case inst_sh: 
@@ -250,7 +252,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         // BRANCH / JUMP
         case inst_beq: case inst_bne: case inst_blt:
         case inst_bge: case inst_bltu: case inst_bgeu: {
-            inst_t imm = sext32((f.B_TYPE.imm_12 << 12) | (f.B_TYPE.imm_11 << 11) | (f.B_TYPE.imm_10_5 << 5) | (f.B_TYPE.imm_4_1 << 1), 13);
+            int32_t imm = sext32((f.B_TYPE.imm_12 << 12) | (f.B_TYPE.imm_11 << 11) | (f.B_TYPE.imm_10_5 << 5) | (f.B_TYPE.imm_4_1 << 1), 13);
             bool take = false;
 
             switch (e) {
@@ -267,13 +269,12 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         }
 
         case inst_jal: {
-            inst32_t imm = sext32((f.J_TYPE.imm_20 << 20) | (f.J_TYPE.imm_19_12 << 12) | (f.J_TYPE.imm_11 << 11) | (f.J_TYPE.imm_10_1 << 1), 21);
-            write_x(self, rd, pc + 4);
-            self->new_pc = pc + imm;
+            int32_t imm = sext32((f.J_TYPE.imm_20 << 20) | (f.J_TYPE.imm_19_12 << 12) | (f.J_TYPE.imm_11 << 11) | (f.J_TYPE.imm_10_1 << 1), 21);
+            self->arch_state.current_pc
             break;
         }
         case inst_jalr: {
-            inst32_t imm = sext32(f.J_TYPE.imm, 12)
+            int32_t imm = sext32(f.I_TYPE.imm, 12);
             uint32_t target = (x1 + imm) & ~1u; // clear bit 0
             write_x(self, rd, pc + 4);
             self->new_pc = target;
