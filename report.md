@@ -4,8 +4,8 @@
 
 Please type your name and student ID at here:
 
-- Student Name: <your_chinese_name>
-- Student ID: <your_NCKU_student_ID>
+- Student Name: 許宇欣
+- Student ID: E24131398
 
 ## Questions (20 pts)
 
@@ -17,7 +17,7 @@ There are **five** questions, and it is **4 pts** for each question.
 
 #### You Answer
 
-Start at here...
+MMIO lets processor control I/O devices using the same load/store instructions and hardware used for normal memory, avoid special instructions.
 
 ### Question 2
 
@@ -25,7 +25,8 @@ Start at here...
 
 #### Your Answer
 
-Start at here...
+The architecture visible state of a RISC-V processor includes the PC, general purpose and floating point register, control/status registers, memory, MMIO, privilege mode.
+They must be saved across context switches, and what the ISA guarantees to software.
 
 ### Question 3
 
@@ -33,7 +34,8 @@ Start at here...
 
 #### Your Answer
 
-Start at here...
+They enable branchless conditional logic.
+We can use branch instructions only to achieve the same functionality, but having the additional conditional set instructions can avoid control flow changes, reduce code size, improve efficiency and si,plify compiler output.
 
 ### Question 4
 
@@ -41,7 +43,12 @@ Start at here...
 
 #### Your Answer
 
-Start at here...
+ROM is "Read-Only Memory." 
+
+For instance :
+MemoryMap_generic_store(&self->mem_map, addr, 4, buf);
+(1) if addr in ROM: calls ROM_ops.store  -> returns error/assert/no-op
+(2) if addr in RAM: calls MainMem_ops.store -> writes 4 bytes
 
 ### Question 5
 
@@ -50,7 +57,13 @@ Start at here...
 
 #### Your Answer
 
-Start at here...
+If ISS execute like:
+___________________________________
+|  uint32_t target = regs[rs1] + imm;
+|  regs[rd] = pc + 4;
+|  pc = target & ~1;
+_____________________________________
+->the target vlaue will be computed from the modified register
 
 ### Question 6 (2 pts for bonus)
 
@@ -58,7 +71,7 @@ Start at here...
 
 #### Your Answer
 
-Start at here...
+Instruction addresses in RISC-V are always aligned, therefore, the LSB of imm is always 0, so ISA omits it to save one bit and reconstructs it by left-shifting the imm when computing target addr.
 
 ## Reflection Report (0 pts)
 
@@ -70,4 +83,6 @@ In this section, please write a short reflection about the lab:
 
 ### You Report
 
-Start at here...
+1. I learned how to make a simple ISS in C for decoing and executing RISC-V instructions. Also, I learned how the computer read from the binary code and execute then deocode and execute them.
+2. There are so many instructions so I need to write many cases, any missing could leads to some bug. I solve it by writing carefully.
+3. The explainatons and notes TA gave in class really helps alots, so I can save some time to watch anime.
