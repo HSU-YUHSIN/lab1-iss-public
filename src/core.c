@@ -256,6 +256,9 @@ void Core_ctor(Core *self) {
     self->super.vtbl                  = &vtbl;
     // Ensure register file is zeroed
     memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
+        // Initialize PC values
+    self->arch_state.current_pc = 0;
+    self->new_pc = 0;
 }
 
 void Core_dtor(Core *self) {
