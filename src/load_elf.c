@@ -60,30 +60,15 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 
         /* try to load each "loadable" sections into buffer */
         if (prog_header.p_type == PT_LOAD && prog_header.p_filesz > 0) {
-            LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
-                "and p_filesz: 0x%08x\n",
-                prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
-            
-            // Check if address is within bounds - skip segments outside main memory
-            if (prog_header.p_paddr < MAIN_MEM_MMAP_BASE) {
-                LOG("Skipping segment at 0x%08x (below MAIN_MEM_MMAP_BASE)\n", 
-                    prog_header.p_paddr);
-                continue;
-            }
-            
-            addr_t offset = prog_header.p_paddr - MAIN_MEM_MMAP_BASE;
-            if (offset + prog_header.p_filesz > buffer_size) {
-                LOG("Skipping segment at 0x%08x (exceeds buffer size)\n",
-                    prog_header.p_paddr);
-                continue;
-            }
-            
             if (fseek(f, prog_header.p_offset, SEEK_SET) != 0) {
                 fprintf(stderr, "Fail to seek the file\n");
                 goto end;
             }
-            
-            if (fread(&buffer[offset], prog_header.p_filesz, 1, f) != 1) {
+            LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
+                "and p_filesz: 0x%08x\n",
+                prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
+            if (fread(&buffer[prog_header.p_paddr - MAIN_MEM_MMAP_BASE],
+                      prog_header.p_filesz, 1, f) != 1) {
                 fprintf(stderr, "Failed to load section in ELF file\n");
                 goto end;
             }
