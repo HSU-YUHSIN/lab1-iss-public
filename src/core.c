@@ -148,11 +148,11 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     reg_t rs1  = RS1_OF(insn);
     reg_t rs2  = RS2_OF(insn);
 
-    reg_t imm_i = (reg_t)IMM_I_OF(insn);
-    reg_t imm_s = (reg_t)IMM_S_OF(insn);
-    reg_t imm_b = (reg_t)IMM_B_OF(insn);
-    reg_t imm_u = (reg_t)IMM_U_OF(insn);
-    reg_t imm_j = (reg_t)IMM_J_OF(insn);
+    int32_t imm_i = IMM_I_OF(insn);
+    int32_t imm_s = IMM_S_OF(insn);
+    int32_t imm_b = IMM_B_OF(insn);
+    reg_t  imm_u  = IMM_U_OF(insn);   // U-type stays zero-extended
+    int32_t imm_j = IMM_J_OF(insn);
 
     switch (inst_enum) {
     // R-type OP instructions
@@ -203,8 +203,11 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + imm_i;
         break;
     case inst_slli:
-        if (rd != 0)
-            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (imm_i & 0x1F);
+        if (rd != 0) {
+            uint32_t shamt = insn >> 20; // lower 5 bits are shamt in RV32I
+            shamt &= 0x1F;
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << shamt;
+        }
         break;
     case inst_slti:
         if (rd != 0)
@@ -219,12 +222,18 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ imm_i;
         break;
     case inst_srli:
-        if (rd != 0)
-            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (imm_i & 0x1F);
+        if (rd != 0) {
+            uint32_t shamt = insn >> 20; // lower 5 bits are shamt in RV32I
+            shamt &= 0x1F;
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> shamt;
+        }
         break;
     case inst_srai:
-        if (rd != 0)
-            self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (imm_i & 0x1F);
+        if (rd != 0) {
+            uint32_t shamt = insn >> 20; // lower 5 bits are shamt in RV32I
+            shamt &= 0x1F;
+            self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> shamt;
+        }
         break;
     case inst_ori:
         if (rd != 0)
@@ -238,21 +247,24 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     // LOAD
     case inst_lb: {
         byte_t b;
-        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i);
+        MemoryMap_generic_load(&self->mem_map, addr, 1, &b);
         if (rd != 0)
             self->arch_state.gpr[rd] = sign_extend(b, 8);
         break;
     }
     case inst_lh: {
         byte_t buf[2];
-        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i);
+        MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
         if (rd != 0)
             self->arch_state.gpr[rd] = sign_extend((reg_t)buf[0] | ((reg_t)buf[1] << 8), 16);
         break;
     }
     case inst_lw: {
         byte_t buf[4];
-        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 4, buf);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i);
+        MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
         if (rd != 0)
             self->arch_state.gpr[rd] = (reg_t)buf[0]
                                      | ((reg_t)buf[1] << 8)
@@ -262,14 +274,16 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     }
     case inst_lbu: {
         byte_t b;
-        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i);
+        MemoryMap_generic_load(&self->mem_map, addr, 1, &b);
         if (rd != 0)
             self->arch_state.gpr[rd] = b;
         break;
     }
     case inst_lhu: {
         byte_t buf[2];
-        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i);
+        MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
         if (rd != 0)
             self->arch_state.gpr[rd] = (reg_t)buf[0] | ((reg_t)buf[1] << 8);
         break;
@@ -278,12 +292,14 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     // STORE
     case inst_sb: {
         byte_t b = self->arch_state.gpr[rs2] & 0xFF;
-        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 1, &b);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_s);
+        MemoryMap_generic_store(&self->mem_map, addr, 1, &b);
         break;
     }
     case inst_sh: {
         byte_t buf[2] = { self->arch_state.gpr[rs2] & 0xFF, (self->arch_state.gpr[rs2] >> 8) & 0xFF };
-        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 2, buf);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_s);
+        MemoryMap_generic_store(&self->mem_map, addr, 2, buf);
         break;
     }
     case inst_sw: {
@@ -291,47 +307,48 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             self->arch_state.gpr[rs2] & 0xFF, (self->arch_state.gpr[rs2] >> 8) & 0xFF,
             (self->arch_state.gpr[rs2] >> 16) & 0xFF, (self->arch_state.gpr[rs2] >> 24) & 0xFF
         };
-        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 4, buf);
+        reg_t addr = (reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_s);
+        MemoryMap_generic_store(&self->mem_map, addr, 4, buf);
         break;
     }
 
     // BRANCH
     case inst_beq:
         if (self->arch_state.gpr[rs1] == self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
     case inst_bne:
         if (self->arch_state.gpr[rs1] != self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
     case inst_blt:
         if ((int32_t)self->arch_state.gpr[rs1] < (int32_t)self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
     case inst_bge:
         if ((int32_t)self->arch_state.gpr[rs1] >= (int32_t)self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
     case inst_bltu:
         if (self->arch_state.gpr[rs1] < self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
     case inst_bgeu:
         if (self->arch_state.gpr[rs1] >= self->arch_state.gpr[rs2])
-            self->new_pc = pc + imm_b;
+            self->new_pc = (reg_t)((int32_t)pc + imm_b);
         break;
 
     // JAL
     case inst_jal:
         if (rd != 0)
             self->arch_state.gpr[rd] = pc + 4;
-        self->new_pc = pc + imm_j;
+        self->new_pc = (reg_t)((int32_t)pc + imm_j);
         break;
     // JALR
     case inst_jalr:
         if (rd != 0)
             self->arch_state.gpr[rd] = pc + 4;
-        self->new_pc = (self->arch_state.gpr[rs1] + imm_i) & ~1;
+        self->new_pc = ((reg_t)((int32_t)self->arch_state.gpr[rs1] + imm_i)) & ~1u;
         break;
 
     // LUI
@@ -394,6 +411,34 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
