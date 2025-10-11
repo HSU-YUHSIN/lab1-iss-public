@@ -20,6 +20,48 @@ static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
     if (rd != 0 && rd < 32) self->arch_state.gpr[rd] = val; // x0 is hardwired to 0
 }
 
+/* ---------------- manual field extraction (no bitfields) ---------------- */
+static inline uint32_t get_bits(uint32_t x, int hi, int lo) {
+    uint32_t width = (uint32_t)(hi - lo + 1);
+    uint32_t mask = (width >= 32u) ? 0xFFFFFFFFu : ((1u << width) - 1u);
+    return (x >> lo) & mask;
+}
+
+#define OPCODE(x)   get_bits((x), 6, 0)
+#define RD(x)       get_bits((x), 11, 7)
+#define FUNCT3(x)   get_bits((x), 14, 12)
+#define RS1(x)      get_bits((x), 19, 15)
+#define RS2(x)      get_bits((x), 24, 20)
+#define FUNCT7(x)   get_bits((x), 31, 25)
+
+static inline int32_t imm_i(uint32_t raw) {
+    return sext32(get_bits(raw, 31, 20), 12);
+}
+static inline int32_t imm_s(uint32_t raw) {
+    uint32_t v = (get_bits(raw, 31, 25) << 5) | get_bits(raw, 11, 7);
+    return sext32(v, 12);
+}
+static inline int32_t imm_b(uint32_t raw) {
+    uint32_t v = (get_bits(raw, 31, 31) << 12) |
+                 (get_bits(raw, 7, 7)   << 11) |
+                 (get_bits(raw, 30, 25) << 5)  |
+                 (get_bits(raw, 11, 8)  << 1);
+    return sext32(v, 13);
+}
+static inline int32_t imm_j(uint32_t raw) {
+    uint32_t v = (get_bits(raw, 31, 31) << 20) |
+                 (get_bits(raw, 19, 12) << 12) |
+                 (get_bits(raw, 20, 20) << 11) |
+                 (get_bits(raw, 30, 21) << 1);
+    return sext32(v, 21);
+}
+static inline uint32_t imm_u(uint32_t raw) {
+    return get_bits(raw, 31, 12) << 12;
+}
+static inline uint32_t shamt_imm(uint32_t raw) {
+    return get_bits(raw, 24, 20) & 0x1Fu;
+}
+
 /* ---------------- fetch ---------------- */
 static inst_fields_t Core_fetch(Core *self) {
     // fetch instruction according to self->arch_state.current_pc
@@ -44,9 +86,10 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t f) {
     (void)self;
     inst_enum_t ret = (inst_enum_t)0; // unknown by default
 
-    reg_t opcode = f.R_TYPE.opcode;
-    reg_t func3  = f.R_TYPE.func3;
-    reg_t func7  = f.R_TYPE.func7;
+    uint32_t raw   = f.raw;
+    reg_t opcode   = OPCODE(raw);
+    reg_t func3    = FUNCT3(raw);
+    reg_t func7    = FUNCT7(raw);
 
     switch (opcode) {
     case OP: { /* R-type */
@@ -71,13 +114,13 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t f) {
             case 0x6: ret = inst_ori;   break;
             case 0x7: ret = inst_andi;  break;
             case 0x1: { // SLLI legality: imm[11:5]==0
-                uint32_t imm = f.I_TYPE.imm_11_0;
-                if ((imm & ~0x1Fu) == 0) ret = inst_slli; // else illegal -> unknown
+                uint32_t immI = get_bits(raw, 31, 20);
+                if ((immI & ~0x1Fu) == 0) ret = inst_slli;
                 break;
             }
             case 0x5: { // SRLI/SRAI legality
-                uint32_t imm = f.I_TYPE.imm_11_0;
-                uint32_t hi  = imm & ~0x1Fu; // imm[11:5] << 5
+                uint32_t immI = get_bits(raw, 31, 20);
+                uint32_t hi   = immI & ~0x1Fu; // imm[11:5]
                 if (hi == 0x000u)      ret = inst_srli;
                 else if (hi == 0x400u) ret = inst_srai; // 0b0100000 << 5
                 break;
@@ -129,9 +172,11 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
     // default next PC = PC + 4
     self->new_pc = self->arch_state.current_pc + 4;
 
-    uint32_t rs1 = f.R_TYPE.rs1;
-    uint32_t rs2 = f.R_TYPE.rs2;
-    uint32_t rd  = f.R_TYPE.rd;
+    uint32_t raw = f.raw;
+
+    uint32_t rs1 = RS1(raw);
+    uint32_t rs2 = RS2(raw);
+    uint32_t rd  = RD(raw);
 
     uint32_t x1 = self->arch_state.gpr[rs1];
     uint32_t x2 = self->arch_state.gpr[rs2];
@@ -150,19 +195,19 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         case inst_and:  write_x(self, rd, x1 & x2); break;
 
         /* I-type ALU */
-        case inst_addi:  { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 + imm); break; }
-        case inst_slti:  { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, (int32_t)x1 < imm); break; }
-        case inst_sltiu: { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 < (uint32_t)imm); break; }
-        case inst_xori:  { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
-        case inst_ori:   { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 | (uint32_t)imm); break; }
-        case inst_andi:  { int32_t imm = sext32(f.I_TYPE.imm_11_0, 12); write_x(self, rd, x1 & (uint32_t)imm); break; }
-        case inst_slli:  { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, x1 << sh); break; }
-        case inst_srli:  { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, x1 >> sh); break; }
-        case inst_srai:  { uint32_t sh = f.I_TYPE.imm_11_0 & 0x1F; write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
+        case inst_addi:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 + imm); break; }
+        case inst_slti:  { int32_t imm = imm_i(raw); write_x(self, rd, (int32_t)x1 < imm); break; }
+        case inst_sltiu: { int32_t imm = imm_i(raw); write_x(self, rd, x1 < (uint32_t)imm); break; }
+        case inst_xori:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
+        case inst_ori:   { int32_t imm = imm_i(raw); write_x(self, rd, x1 | (uint32_t)imm); break; }
+        case inst_andi:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 & (uint32_t)imm); break; }
+        case inst_slli:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, x1 << sh); break; }
+        case inst_srli:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, x1 >> sh); break; }
+        case inst_srai:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
 
         /* LOADs */
         case inst_lb: case inst_lbu: case inst_lh: case inst_lhu: case inst_lw: {
-            int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
+            int32_t imm = imm_i(raw);
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {0,0,0,0};
             switch (e) {
@@ -198,7 +243,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* STOREs */
         case inst_sb: case inst_sh: case inst_sw: {
-            int32_t imm = sext32(((f.S_TYPE.imm_11_5 << 5) | f.S_TYPE.imm_4_0), 12);
+            int32_t imm = imm_s(raw);
             uint32_t addr = x1 + imm;
             byte_t buf[4];
             switch (e) {
@@ -225,10 +270,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* BRANCHes */
         case inst_beq: case inst_bne: case inst_blt: case inst_bge: case inst_bltu: case inst_bgeu: {
-            int32_t imm = sext32((f.B_TYPE.imm_12 << 12) |
-                                 (f.B_TYPE.imm_11 << 11) |
-                                 (f.B_TYPE.imm_10_5 << 5) |
-                                 (f.B_TYPE.imm_4_1  << 1), 13);
+            int32_t imm = imm_b(raw);
             int take = 0;
             switch (e) {
                 case inst_beq:  take = (x1 == x2); break;
@@ -245,16 +287,13 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* JUMPs */
         case inst_jal: {
-            int32_t imm = sext32((f.J_TYPE.imm_20    << 20) |
-                                 (f.J_TYPE.imm_19_12 << 12) |
-                                 (f.J_TYPE.imm_11    << 11) |
-                                 (f.J_TYPE.imm_10_1  << 1), 21);
+            int32_t imm = imm_j(raw);
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = (self->arch_state.current_pc + imm) & ~0x3u;
             break;
         }
         case inst_jalr: {
-            int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
+            int32_t imm = imm_i(raw);
             uint32_t target = (x1 + imm) & ~3u; // force 4-byte alignment (no traps in this ISS)
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
@@ -263,10 +302,10 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* U-type */
         case inst_lui:
-            write_x(self, rd, (f.U_TYPE.imm_31_12 << 12));
+            write_x(self, rd, imm_u(raw));
             break;
         case inst_auipc:
-            write_x(self, rd, self->arch_state.current_pc + (f.U_TYPE.imm_31_12 << 12));
+            write_x(self, rd, self->arch_state.current_pc + imm_u(raw));
             break;
 
         default:
