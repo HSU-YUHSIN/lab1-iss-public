@@ -7,13 +7,13 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <string.h>
 
 static inline reg_t sign_extend(reg_t value, int bits) {
     reg_t mask = 1U << (bits - 1);
     return (value ^ mask) - mask;
 }
 
-// ISS Fetch stage
 static inst_fields_t Core_fetch(Core *self) {
     byte_t inst_in_bytes[4] = {};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
@@ -25,7 +25,6 @@ static inst_fields_t Core_fetch(Core *self) {
     return ret;
 }
 
-// ISS decode stage
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     inst_enum_t ret = inst_invalid;
 
@@ -34,7 +33,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     reg_t func7  = inst_fields.R_TYPE.func7;
 
     switch (opcode) {
-    case OP: // R-type (add, sub, etc)
+    case OP: // R-type
         switch (func3) {
         case 0x0: ret = (func7 == 0x00) ? inst_add : inst_sub; break;
         case 0x1: ret = inst_sll; break;
@@ -46,7 +45,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         case 0x7: ret = inst_and; break;
         }
         break;
-    case OP_IMM: // I-type immediate arithmetic
+    case OP_IMM: // I-type
         switch (func3) {
         case 0x0: ret = inst_addi; break;
         case 0x1: ret = inst_slli; break;
@@ -84,29 +83,24 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         case 0x7: ret = inst_bgeu; break;
         }
         break;
-    case JAL:
-        ret = inst_jal;
-        break;
-    case JALR:
-        ret = inst_jalr;
-        break;
-    case AUIPC:
-        ret = inst_auipc;
-        break;
-    case LUI:
-        ret = inst_lui;
+    case JAL:   ret = inst_jal;   break;
+    case JALR:  ret = inst_jalr;  break;
+    case AUIPC: ret = inst_auipc; break;
+    case LUI:   ret = inst_lui;   break;
+    default:
+        ret = inst_invalid;
         break;
     }
     return ret;
 }
 
-// ISS execute and commit stage
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
     reg_t *reg = self->arch_state.gpr;
-    reg_t pc = self->arch_state.current_pc;
-    reg_t rs1 = inst_fields.R_TYPE.rs1;
-    reg_t rs2 = inst_fields.R_TYPE.rs2;
-    reg_t rd = inst_fields.R_TYPE.rd;
+    reg_t pc   = self->arch_state.current_pc;
+    reg_t rd   = inst_fields.R_TYPE.rd & 0x1F;
+    reg_t rs1  = inst_fields.R_TYPE.rs1 & 0x1F;
+    reg_t rs2  = inst_fields.R_TYPE.rs2 & 0x1F;
+
     reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm_11_0, 12);
     reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm_4_0 | (inst_fields.S_TYPE.imm_11_5 << 5)), 12);
     reg_t imm_b = sign_extend(
@@ -121,10 +115,10 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         (inst_fields.J_TYPE.imm_11 << 11) |
         (inst_fields.J_TYPE.imm_19_12 << 12), 21);
 
-    self->new_pc = pc + 4; // default
+    self->new_pc = pc + 4;
 
     switch (inst_enum) {
-    // OP
+    // R-type
     case inst_add:   reg[rd] = reg[rs1] + reg[rs2]; break;
     case inst_sub:   reg[rd] = reg[rs1] - reg[rs2]; break;
     case inst_sll:   reg[rd] = reg[rs1] << (reg[rs2] & 0x1F); break;
@@ -136,7 +130,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     case inst_or:    reg[rd] = reg[rs1] | reg[rs2]; break;
     case inst_and:   reg[rd] = reg[rs1] & reg[rs2]; break;
 
-    // OPIMM
+    // I-type
     case inst_addi:  reg[rd] = reg[rs1] + imm_i; break;
     case inst_slli:  reg[rd] = reg[rs1] << (imm_i & 0x1F); break;
     case inst_slti:  reg[rd] = (int32_t)reg[rs1] < (int32_t)imm_i; break;
@@ -229,7 +223,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
 
     default:
-        // unknown/invalid, do nothing
+        // NOP or invalid
         break;
     }
 
@@ -255,6 +249,8 @@ void Core_ctor(Core *self) {
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
     self->super.vtbl                  = &vtbl;
+    // Ensure registers are cleared
+    memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
 }
 
 void Core_dtor(Core *self) {
