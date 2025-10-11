@@ -61,8 +61,8 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     // Default: next sequential PC
     self->new_pc = self->arch_state.current_pc + 4;
 
-    // Shorthand to registers
-    reg_t *x = self->arch_state.x;
+#define REG(i)      (self->arch_state.gpr[(i)])
+#define WRITE_RD(v) do { if (rd != 0) REG(rd) = (reg_t)(v); } while (0)
 
     // Extract raw fields
     uint32_t raw   = (uint32_t)inst_fields.raw;
@@ -73,8 +73,8 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     uint32_t rs2   = (raw >> 20) & 0x1F;
     uint32_t func7 = (raw >> 25) & 0x7F;
 
-    uint32_t rs1v = x[rs1];
-    uint32_t rs2v = x[rs2];
+    uint32_t rs1v = REG(rs1);
+    uint32_t rs2v = REG(rs2);
 
     // ----- Immediate construction helpers (no new functions/macros; fully inlined) -----
     // I‑type (12‑bit signed)
@@ -97,11 +97,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
                        (((raw >> 21) & 0x3FF) << 1);
     int32_t  imm_j   = (int32_t)((int32_t)(imm_j_u << 11) >> 11);
 
-    // Write helper: x0 is hardwired to 0
-    auto write_rd = [&](uint32_t value) {
-        if (rd != 0) x[rd] = (reg_t)value;
-    };
-
     switch (opcode) {
     case 0x33: { // OP (R‑type)
         uint32_t shamt = rs2v & 0x1F;
@@ -110,32 +105,32 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         case 0x0: // ADD/SUB
             res = (func7 == 0x20) ? (uint32_t)((int32_t)rs1v - (int32_t)rs2v)
                                    : (rs1v + rs2v);
-            write_rd(res);
+            WRITE_RD(res);
             break;
         case 0x1: // SLL
-            write_rd(rs1v << shamt);
+            WRITE_RD(rs1v << shamt);
             break;
         case 0x2: // SLT
-            write_rd(((int32_t)rs1v < (int32_t)rs2v) ? 1u : 0u);
+            WRITE_RD(((int32_t)rs1v < (int32_t)rs2v) ? 1u : 0u);
             break;
         case 0x3: // SLTU
-            write_rd((rs1v < rs2v) ? 1u : 0u);
+            WRITE_RD((rs1v < rs2v) ? 1u : 0u);
             break;
         case 0x4: // XOR
-            write_rd(rs1v ^ rs2v);
+            WRITE_RD(rs1v ^ rs2v);
             break;
         case 0x5: // SRL/SRA
             if (func7 == 0x20) {
-                write_rd((uint32_t)((int32_t)rs1v >> shamt));
+                WRITE_RD((uint32_t)((int32_t)rs1v >> shamt));
             } else {
-                write_rd(rs1v >> shamt);
+                WRITE_RD(rs1v >> shamt);
             }
             break;
         case 0x6: // OR
-            write_rd(rs1v | rs2v);
+            WRITE_RD(rs1v | rs2v);
             break;
         case 0x7: // AND
-            write_rd(rs1v & rs2v);
+            WRITE_RD(rs1v & rs2v);
             break;
         }
         break;
@@ -144,33 +139,36 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         uint32_t shamt = (uint32_t)imm_i & 0x1F;
         switch (func3) {
         case 0x0: // ADDI
-            write_rd((uint32_t)((int32_t)rs1v + imm_i));
+            WRITE_RD((uint32_t)((int32_t)rs1v + imm_i));
             break;
         case 0x2: // SLTI
-            write_rd(((int32_t)rs1v < imm_i) ? 1u : 0u);
+            WRITE_RD(((int32_t)rs1v < imm_i) ? 1u : 0u);
             break;
         case 0x3: // SLTIU
-            write_rd((rs1v < (uint32_t)imm_i) ? 1u : 0u);
+            WRITE_RD((rs1v < (uint32_t)imm_i) ? 1u : 0u);
             break;
         case 0x4: // XORI
-            write_rd(rs1v ^ (uint32_t)imm_i);
+            WRITE_RD(rs1v ^ (uint32_t)imm_i);
             break;
         case 0x6: // ORI
-            write_rd(rs1v | (uint32_t)imm_i);
+            WRITE_RD(rs1v | (uint32_t)imm_i);
             break;
         case 0x7: // ANDI
-            write_rd(rs1v & (uint32_t)imm_i);
+            WRITE_RD(rs1v & (uint32_t)imm_i);
             break;
         case 0x1: // SLLI
-            write_rd(rs1v << shamt);
+            WRITE_RD(rs1v << shamt);
             break;
-        case 0x5: // SRLI/SRAI
-            if (((imm_i >> 10) & 0x3F) == 0x10) { // imm[11:5]==0b010000 -> SRAI
-                write_rd((uint32_t)((int32_t)rs1v >> shamt));
-            } else { // SRLI
-                write_rd(rs1v >> shamt);
+        case 0x5: { // SRLI/SRAI
+            uint32_t shamt = (raw >> 20) & 0x1F;
+            uint32_t is_srai = (raw >> 30) & 0x1; // imm[11:5] = 0100000 -> bit30 = 1
+            if (is_srai) {
+                WRITE_RD((uint32_t)((int32_t)rs1v >> shamt));
+            } else {
+                WRITE_RD(rs1v >> shamt);
             }
             break;
+        }
         }
         break;
     }
@@ -180,13 +178,13 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         switch (func3) {
         case 0x0: // LB
             MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-            write_rd((uint32_t)(int32_t)((int8_t)buf[0]));
+            WRITE_RD((uint32_t)(int32_t)((int8_t)buf[0]));
             break;
         case 0x1: // LH
             MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
             {
                 uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8);
-                write_rd((uint32_t)(int32_t)((int16_t)u));
+                WRITE_RD((uint32_t)(int32_t)((int16_t)u));
             }
             break;
         case 0x2: // LW
@@ -194,18 +192,18 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             {
                 uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
                              ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
-                write_rd(u);
+                WRITE_RD(u);
             }
             break;
         case 0x4: // LBU
             MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-            write_rd((uint32_t)buf[0]);
+            WRITE_RD((uint32_t)buf[0]);
             break;
         case 0x5: // LHU
             MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
             {
                 uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8);
-                write_rd(u);
+                WRITE_RD(u);
             }
             break;
         }
@@ -251,22 +249,22 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
     case 0x6F: { // JAL
-        write_rd(self->arch_state.current_pc + 4);
+        WRITE_RD(self->arch_state.current_pc + 4);
         self->new_pc = self->arch_state.current_pc + (uint32_t)imm_j;
         break;
     }
     case 0x67: { // JALR
-        write_rd(self->arch_state.current_pc + 4);
+        WRITE_RD(self->arch_state.current_pc + 4);
         uint32_t t = (rs1v + (uint32_t)imm_i) & ~1u; // clear LSB
         self->new_pc = t;
         break;
     }
     case 0x17: { // AUIPC
-        write_rd(self->arch_state.current_pc + (uint32_t)imm_u);
+        WRITE_RD(self->arch_state.current_pc + (uint32_t)imm_u);
         break;
     }
     case 0x37: { // LUI
-        write_rd((uint32_t)imm_u);
+        WRITE_RD((uint32_t)imm_u);
         break;
     }
     default:
@@ -275,7 +273,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     }
 
     // x0 must always read as 0
-    x[0] = 0;
+    REG(0) = 0;
 }
 
 static void Core_update_pc(Core *self) {
@@ -311,6 +309,7 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
 
