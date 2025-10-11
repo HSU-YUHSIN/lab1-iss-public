@@ -67,21 +67,10 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
             LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
-            
-            // Calculate offset from ROM base and load if within bounds
-            if (prog_header.p_paddr >= ROM_MMAP_BASE) {
-                addr_t offset = prog_header.p_paddr - ROM_MMAP_BASE;
-                if (offset < buffer_size) {
-                    // Load as much as fits in the buffer
-                    size_t bytes_to_load = prog_header.p_filesz;
-                    if (offset + bytes_to_load > buffer_size) {
-                        bytes_to_load = buffer_size - offset;
-                    }
-                    if (fread(&buffer[offset], bytes_to_load, 1, f) != 1) {
-                        fprintf(stderr, "Failed to load section in ELF file\n");
-                        goto end;
-                    }
-                }
+            if (fread(&buffer[prog_header.p_paddr - ROM_MMAP_BASE],
+                      prog_header.p_filesz, 1, f) != 1) {
+                fprintf(stderr, "Failed to load section in ELF file\n");
+                goto end;
             }
         }
     }
