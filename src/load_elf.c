@@ -67,8 +67,22 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
             LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
-            if (fread(&buffer[prog_header.p_paddr - MAIN_MEM_MMAP_BASE],
-                      prog_header.p_filesz, 1, f) != 1) {
+            
+            // Check if address is within bounds
+            if (prog_header.p_paddr < MAIN_MEM_MMAP_BASE) {
+                fprintf(stderr, "Invalid p_paddr: 0x%08x is below MAIN_MEM_MMAP_BASE\n", 
+                        prog_header.p_paddr);
+                goto end;
+            }
+            
+            addr_t offset = prog_header.p_paddr - MAIN_MEM_MMAP_BASE;
+            if (offset + prog_header.p_filesz > buffer_size) {
+                fprintf(stderr, "Segment exceeds buffer size: offset=0x%x, filesz=0x%x, buffer_size=0x%lx\n",
+                        offset, prog_header.p_filesz, buffer_size);
+                goto end;
+            }
+            
+            if (fread(&buffer[offset], prog_header.p_filesz, 1, f) != 1) {
                 fprintf(stderr, "Failed to load section in ELF file\n");
                 goto end;
             }
@@ -78,4 +92,5 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 end:
     fclose(f);
 }
+
 
