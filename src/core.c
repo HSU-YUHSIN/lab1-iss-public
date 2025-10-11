@@ -25,32 +25,50 @@ static inst_fields_t Core_fetch(Core *self) {
 
 // ISS decode stage
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
-    (void)self; // unused for now
-    inst_enum_t ret = (inst_enum_t)0;
+    inst_enum_t ret = {};
 
     // helper local variables
     reg_t opcode = inst_fields.R_TYPE.opcode;
+    reg_t rs1    = inst_fields.R_TYPE.rs1;
+    reg_t rs2    = inst_fields.R_TYPE.rs2;
+    reg_t rd     = inst_fields.R_TYPE.rd;
     reg_t func3  = inst_fields.R_TYPE.func3;
     reg_t func7  = inst_fields.R_TYPE.func7;
 
-    // Minimal decode to tag special control‑flow/upper‑imm ops that need the enum elsewhere.
-    // For all other instructions we will directly use opcode/func3/func7 in Core_execute.
+    // decode common part
+    // TODO
     switch (opcode) {
-    case 0x6F: // JAL
+    case OP: {
+        break;
+    }
+    case OP_IMM: {
+        break;
+    }
+    case LOAD: {
+        break;
+    }
+    case STORE: {
+        break;
+    }
+    case BRANCH: {
+        break;
+    }
+    case JAL: {
         ret = inst_jal;
         break;
-    case 0x67: // JALR
+    }
+    case JALR: {
         ret = inst_jalr;
         break;
-    case 0x17: // AUIPC
+    }
+    case AUIPC: {
         ret = inst_auipc;
         break;
-    case 0x37: // LUI
+    }
+    case LUI: {
         ret = inst_lui;
         break;
-    default:
-        (void)func3; (void)func7; // silence unused warnings
-        break;
+    }
     }
 
     return ret;
@@ -58,222 +76,11 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
 
 // ISS execute and commit stage (two-in-one)
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
-    // Default: next sequential PC
+    // set self->new_pc to a default value by PC+4
+    // it might be overridden when there is a branch instruction
     self->new_pc = self->arch_state.current_pc + 4;
 
-#define REG(i)      (self->arch_state.gpr[(i)])
-#define WRITE_RD(v) do { if (rd != 0) REG(rd) = (reg_t)(v); } while (0)
-
-    // Extract raw fields
-    uint32_t raw   = (uint32_t)inst_fields.raw;
-    uint32_t opcode= raw & 0x7F;
-    uint32_t rd    = (raw >> 7)  & 0x1F;
-    uint32_t func3 = (raw >> 12) & 0x7;
-    uint32_t rs1   = (raw >> 15) & 0x1F;
-    uint32_t rs2   = (raw >> 20) & 0x1F;
-    uint32_t func7 = (raw >> 25) & 0x7F;
-
-    uint32_t rs1v = REG(rs1);
-    uint32_t rs2v = REG(rs2);
-
-    // ----- Immediate construction helpers (no new functions/macros; fully inlined) -----
-    // I‑type (12‑bit signed)
-    int32_t imm_i = (int32_t)((int32_t)raw >> 20);
-    // S‑type (12‑bit signed): bits [31:25|11:7]
-    uint32_t imm_s_u = ((raw >> 7) & 0x1F) | (((raw >> 25) & 0x7F) << 5);
-    int32_t  imm_s   = (int32_t)((int32_t)(imm_s_u << 20) >> 20);
-    // B‑type (13‑bit signed, LSB=0): bits [31|7|30:25|11:8|0]
-    uint32_t imm_b_u = (((raw >> 31) & 0x1) << 12) |
-                       (((raw >> 7)  & 0x1) << 11) |
-                       (((raw >> 25) & 0x3F) << 5) |
-                       (((raw >> 8)  & 0xF) << 1);
-    int32_t  imm_b   = (int32_t)((int32_t)(imm_b_u << 19) >> 19);
-    // U‑type (upper 20 bits)
-    int32_t  imm_u   = (int32_t)(raw & 0xFFFFF000);
-    // J‑type (21‑bit signed, LSB=0): bits [31|19:12|20|30:21|0]
-    uint32_t imm_j_u = (((raw >> 31) & 0x1) << 20) |
-                       (((raw >> 12) & 0xFF) << 12) |
-                       (((raw >> 20) & 0x1) << 11) |
-                       (((raw >> 21) & 0x3FF) << 1);
-    int32_t  imm_j   = (int32_t)((int32_t)(imm_j_u << 11) >> 11);
-
-    switch (opcode) {
-    case 0x33: { // OP (R‑type)
-        uint32_t shamt = rs2v & 0x1F;
-        uint32_t res = 0;
-        switch (func3) {
-        case 0x0: // ADD/SUB
-            res = (func7 == 0x20) ? (uint32_t)((int32_t)rs1v - (int32_t)rs2v)
-                                   : (rs1v + rs2v);
-            WRITE_RD(res);
-            break;
-        case 0x1: // SLL
-            WRITE_RD(rs1v << shamt);
-            break;
-        case 0x2: // SLT
-            WRITE_RD(((int32_t)rs1v < (int32_t)rs2v) ? 1u : 0u);
-            break;
-        case 0x3: // SLTU
-            WRITE_RD((rs1v < rs2v) ? 1u : 0u);
-            break;
-        case 0x4: // XOR
-            WRITE_RD(rs1v ^ rs2v);
-            break;
-        case 0x5: // SRL/SRA
-            if (func7 == 0x20) {
-                WRITE_RD((uint32_t)((int32_t)rs1v >> shamt));
-            } else {
-                WRITE_RD(rs1v >> shamt);
-            }
-            break;
-        case 0x6: // OR
-            WRITE_RD(rs1v | rs2v);
-            break;
-        case 0x7: // AND
-            WRITE_RD(rs1v & rs2v);
-            break;
-        }
-        break;
-    }
-    case 0x13: { // OP‑IMM (I‑type ALU)
-        uint32_t shamt = (uint32_t)imm_i & 0x1F;
-        switch (func3) {
-        case 0x0: // ADDI
-            WRITE_RD((uint32_t)((int32_t)rs1v + imm_i));
-            break;
-        case 0x2: // SLTI
-            WRITE_RD(((int32_t)rs1v < imm_i) ? 1u : 0u);
-            break;
-        case 0x3: // SLTIU
-            WRITE_RD((rs1v < (uint32_t)imm_i) ? 1u : 0u);
-            break;
-        case 0x4: // XORI
-            WRITE_RD(rs1v ^ (uint32_t)imm_i);
-            break;
-        case 0x6: // ORI
-            WRITE_RD(rs1v | (uint32_t)imm_i);
-            break;
-        case 0x7: // ANDI
-            WRITE_RD(rs1v & (uint32_t)imm_i);
-            break;
-        case 0x1: // SLLI
-            WRITE_RD(rs1v << shamt);
-            break;
-        case 0x5: { // SRLI/SRAI
-            uint32_t shamt = (raw >> 20) & 0x1F;
-            uint32_t is_srai = (raw >> 30) & 0x1; // imm[11:5] = 0100000 -> bit30 = 1
-            if (is_srai) {
-                WRITE_RD((uint32_t)((int32_t)rs1v >> shamt));
-            } else {
-                WRITE_RD(rs1v >> shamt);
-            }
-            break;
-        }
-        }
-        break;
-    }
-    case 0x03: { // LOAD
-        uint32_t addr = rs1v + (uint32_t)imm_i;
-        byte_t buf[4] = {0,0,0,0};
-        switch (func3) {
-        case 0x0: // LB
-            MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-            WRITE_RD((uint32_t)(int32_t)((int8_t)buf[0]));
-            break;
-        case 0x1: // LH
-            MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-            {
-                uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8);
-                WRITE_RD((uint32_t)(int32_t)((int16_t)u));
-            }
-            break;
-        case 0x2: // LW
-            MemoryMap_generic_load(&self->mem_map, addr, 4, buf);
-            {
-                uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8) |
-                             ((uint32_t)buf[2] << 16) | ((uint32_t)buf[3] << 24);
-                WRITE_RD(u);
-            }
-            break;
-        case 0x4: // LBU
-            MemoryMap_generic_load(&self->mem_map, addr, 1, buf);
-            WRITE_RD((uint32_t)buf[0]);
-            break;
-        case 0x5: // LHU
-            MemoryMap_generic_load(&self->mem_map, addr, 2, buf);
-            {
-                uint32_t u = (uint32_t)buf[0] | ((uint32_t)buf[1] << 8);
-                WRITE_RD(u);
-            }
-            break;
-        }
-        break;
-    }
-    case 0x23: { // STORE
-        uint32_t addr = rs1v + (uint32_t)imm_s;
-        byte_t buf[4];
-        switch (func3) {
-        case 0x0: // SB
-            buf[0] = (byte_t)(rs2v & 0xFF);
-            MemoryMap_generic_store(&self->mem_map, addr, 1, buf);
-            break;
-        case 0x1: // SH
-            buf[0] = (byte_t)(rs2v & 0xFF);
-            buf[1] = (byte_t)((rs2v >> 8) & 0xFF);
-            MemoryMap_generic_store(&self->mem_map, addr, 2, buf);
-            break;
-        case 0x2: // SW
-            buf[0] = (byte_t)(rs2v & 0xFF);
-            buf[1] = (byte_t)((rs2v >> 8) & 0xFF);
-            buf[2] = (byte_t)((rs2v >> 16) & 0xFF);
-            buf[3] = (byte_t)((rs2v >> 24) & 0xFF);
-            MemoryMap_generic_store(&self->mem_map, addr, 4, buf);
-            break;
-        }
-        break;
-    }
-    case 0x63: { // BRANCH
-        int take = 0;
-        switch (func3) {
-        case 0x0: take = (rs1v == rs2v); break;              // BEQ
-        case 0x1: take = (rs1v != rs2v); break;              // BNE
-        case 0x4: take = ((int32_t)rs1v <  (int32_t)rs2v); break;  // BLT
-        case 0x5: take = ((int32_t)rs1v >= (int32_t)rs2v); break;  // BGE
-        case 0x6: take = (rs1v <  rs2v); break;              // BLTU
-        case 0x7: take = (rs1v >= rs2v); break;              // BGEU
-        default: break;
-        }
-        if (take) {
-            self->new_pc = self->arch_state.current_pc + (uint32_t)imm_b;
-        }
-        break;
-    }
-    case 0x6F: { // JAL
-        WRITE_RD(self->arch_state.current_pc + 4);
-        self->new_pc = self->arch_state.current_pc + (uint32_t)imm_j;
-        break;
-    }
-    case 0x67: { // JALR
-        WRITE_RD(self->arch_state.current_pc + 4);
-        uint32_t t = (rs1v + (uint32_t)imm_i) & ~1u; // clear LSB
-        self->new_pc = t;
-        break;
-    }
-    case 0x17: { // AUIPC
-        WRITE_RD(self->arch_state.current_pc + (uint32_t)imm_u);
-        break;
-    }
-    case 0x37: { // LUI
-        WRITE_RD((uint32_t)imm_u);
-        break;
-    }
-    default:
-        (void)inst_enum; // unused; execution handled via opcode
-        break;
-    }
-
-    // x0 must always read as 0
-    REG(0) = 0;
+    // TODO
 }
 
 static void Core_update_pc(Core *self) {
