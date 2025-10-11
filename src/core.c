@@ -256,7 +256,7 @@ void Core_ctor(Core *self) {
     self->super.vtbl                  = &vtbl;
     // Ensure register file is zeroed
     memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
-        // Initialize PC values
+    // Initialize PC values
     self->arch_state.current_pc = 0;
     self->new_pc = 0;
 }
@@ -269,6 +269,20 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
