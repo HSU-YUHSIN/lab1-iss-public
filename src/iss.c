@@ -29,7 +29,7 @@ struct iss {
 
 int ISS_ctor(ISS **self, const char *elf_file_name) {
     assert(self != NULL);
-    if (NULL == (*self = calloc(1, sizeof(struct iss)))) {
+    if (NULL == (*self = malloc(sizeof(struct iss)))) {
         return -1;
     }
 
@@ -68,12 +68,9 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
                                    .device_ptr = (AbstractMem *)&self_->halt_mmio };
     Core_add_device(&self_->core, halt_mmap_unit);
 
-    // load ELF into ROM, and initialize PC
+    // load ELF into main memory, and initialize PC
     load_elf(elf_file_name, self_->rom_mmio.rom, ROM_SIZE,
              &self_->core.arch_state.current_pc);
-    
-    // Initialize new_pc to match current_pc
-    self_->core.new_pc = self_->core.arch_state.current_pc;
 
     return 0;
 }
@@ -131,4 +128,3 @@ void ISS_set_main_memory(ISS *self,
 bool ISS_get_halt(ISS *self) {
     return self->halt_mmio.halt_flag;
 }
-

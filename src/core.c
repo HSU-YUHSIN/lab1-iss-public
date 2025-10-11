@@ -94,17 +94,18 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     return ret;
 }
 
+// ISS execute and commit stage (two-in-one)
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
+    // set self->new_pc to a default value by PC+4
+    // it might be overridden when there is a branch instruction
+    self->new_pc = self->arch_state.current_pc + 4;
+
     reg_t *reg = self->arch_state.gpr;
     reg_t pc   = self->arch_state.current_pc;
 
     reg_t rd   = inst_fields.R_TYPE.rd  & 0x1F;
     reg_t rs1  = inst_fields.R_TYPE.rs1 & 0x1F;
     reg_t rs2  = inst_fields.R_TYPE.rs2 & 0x1F;
-
-    // Defensive: check bounds
-    assert(reg != NULL);
-    assert(rd < 32 && rs1 < 32 && rs2 < 32);
 
     reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm_11_0, 12);
     reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm_4_0 | (inst_fields.S_TYPE.imm_11_5 << 5)), 12);
@@ -119,8 +120,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         (inst_fields.J_TYPE.imm_10_1 << 1) |
         (inst_fields.J_TYPE.imm_11 << 11) |
         (inst_fields.J_TYPE.imm_19_12 << 12), 21);
-
-    self->new_pc = pc + 4;
 
     switch (inst_enum) {
     // R-type
@@ -250,15 +249,15 @@ DECLARE_TICK_TICK(Core) {
 
 void Core_ctor(Core *self) {
     assert(self != NULL);
+
+    // initialize memory map object
+    // prepare for being added new MMIO devices
     MemoryMap_ctor(&self->mem_map);
+
+    // initialize base class (Tick)
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
     self->super.vtbl                  = &vtbl;
-    // Ensure register file is zeroed
-    memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
-    // Initialize PC values
-    self->arch_state.current_pc = 0;
-    self->new_pc = 0;
 }
 
 void Core_dtor(Core *self) {

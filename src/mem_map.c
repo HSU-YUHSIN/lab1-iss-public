@@ -55,7 +55,6 @@ void MemoryMap_generic_load(MemoryMap *self, addr_t base_addr, unsigned length, 
         if ((base_addr >= self->memory_map_arr[i].addr_bound.first) &&
             (base_addr + length <= self->memory_map_arr[i].addr_bound.second)) {
             mmap_unit_ptr = &self->memory_map_arr[i];
-            break;
         }
     }
 
@@ -76,7 +75,6 @@ void MemoryMap_generic_store(MemoryMap *self, addr_t base_addr, unsigned length,
         if ((base_addr >= self->memory_map_arr[i].addr_bound.first) &&
             (base_addr + length <= self->memory_map_arr[i].addr_bound.second)) {
             mmap_unit_ptr = &self->memory_map_arr[i];
-            break;
         }
     }
 
@@ -87,4 +85,3 @@ void MemoryMap_generic_store(MemoryMap *self, addr_t base_addr, unsigned length,
     AbstractMem_store(mmap_unit_ptr->device_ptr,
                       base_addr - mmap_unit_ptr->addr_bound.first, length, ref_data);
 }
-

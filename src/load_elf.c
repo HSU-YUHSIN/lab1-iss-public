@@ -78,5 +78,3 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 end:
     fclose(f);
 }
-
-
