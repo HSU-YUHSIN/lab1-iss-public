@@ -127,94 +127,118 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     switch (inst_enum) {
     // R-type OP instructions
     case inst_add:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + self->arch_state.gpr[rs2];
         break;
     case inst_sub:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] - self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] - self->arch_state.gpr[rs2];
         break;
     case inst_sll:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (self->arch_state.gpr[rs2] & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (self->arch_state.gpr[rs2] & 0x1F);
         break;
     case inst_slt:
-        self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)self->arch_state.gpr[rs2];
         break;
     case inst_sltu:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < self->arch_state.gpr[rs2];
         break;
     case inst_xor:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ self->arch_state.gpr[rs2];
         break;
     case inst_srl:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (self->arch_state.gpr[rs2] & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (self->arch_state.gpr[rs2] & 0x1F);
         break;
     case inst_sra:
-        self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (self->arch_state.gpr[rs2] & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (self->arch_state.gpr[rs2] & 0x1F);
         break;
     case inst_or:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | self->arch_state.gpr[rs2];
         break;
     case inst_and:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & self->arch_state.gpr[rs2];
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & self->arch_state.gpr[rs2];
         break;
 
     // I-type
     case inst_addi:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + imm_i;
         break;
     case inst_slli:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (imm_i & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (imm_i & 0x1F);
         break;
     case inst_slti:
-        self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)imm_i;
         break;
     case inst_sltiu:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < imm_i;
         break;
     case inst_xori:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ imm_i;
         break;
     case inst_srli:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (imm_i & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (imm_i & 0x1F);
         break;
     case inst_srai:
-        self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (imm_i & 0x1F);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (imm_i & 0x1F);
         break;
     case inst_ori:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | imm_i;
         break;
     case inst_andi:
-        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & imm_i;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & imm_i;
         break;
 
     // LOAD
     case inst_lb: {
         byte_t b;
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
-        self->arch_state.gpr[rd] = sign_extend(b, 8);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = sign_extend(b, 8);
         break;
     }
     case inst_lh: {
         byte_t buf[2];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
-        self->arch_state.gpr[rd] = sign_extend(buf[0] | (buf[1] << 8), 16);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = sign_extend(buf[0] | (buf[1] << 8), 16);
         break;
     }
     case inst_lw: {
         byte_t buf[4];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 4, buf);
-        self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
         break;
     }
     case inst_lbu: {
         byte_t b;
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
-        self->arch_state.gpr[rd] = b;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = b;
         break;
     }
     case inst_lhu: {
         byte_t buf[2];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
-        self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8);
+        if (rd != 0)
+            self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8);
         break;
     }
 
@@ -266,32 +290,34 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     // JAL
     case inst_jal:
-        self->arch_state.gpr[rd] = pc + 4;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = pc + 4;
         self->new_pc = pc + imm_j;
         break;
     // JALR
     case inst_jalr:
-        self->arch_state.gpr[rd] = pc + 4;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = pc + 4;
         self->new_pc = (self->arch_state.gpr[rs1] + imm_i) & ~1;
         break;
 
     // LUI
     case inst_lui:
-        self->arch_state.gpr[rd] = imm_u;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = imm_u;
         break;
 
     // AUIPC
     case inst_auipc:
-        self->arch_state.gpr[rd] = pc + imm_u;
+        if (rd != 0)
+            self->arch_state.gpr[rd] = pc + imm_u;
         break;
 
     default:
         // NOP or invalid
         break;
     }
-
-    // x0 is always zero
-    self->arch_state.gpr[0] = 0;
+    // Note: x0 protection is handled by checking (rd != 0) before each write
 }
 
 static void Core_update_pc(Core *self) {
