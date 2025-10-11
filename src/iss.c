@@ -71,6 +71,9 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
     // load ELF into main memory, and initialize PC
     load_elf(elf_file_name, self_->main_mem_mmio.mem, MAIN_MEM_SIZE,
              &self_->core.arch_state.current_pc);
+    
+    // Initialize new_pc to match current_pc
+    self_->core.new_pc = self_->core.arch_state.current_pc;
 
     return 0;
 }
