@@ -422,6 +422,12 @@ void Core_ctor(Core *self) {
         if (ram_size != 0) {
             // Leave a small redzone (16B) and set sp to top of RAM
             self->arch_state.gpr[2] = (reg_t)(ram_base + ram_size - 16);
+        } else {
+            // Fallback: assume a conventional DRAM window if macros are not available
+            // Many RV32 lab templates map DRAM at 0x8000_0000. Use a conservative size.
+            const reg_t DEFAULT_RAM_BASE = (reg_t)0x80000000u;
+            const reg_t DEFAULT_RAM_SIZE = (reg_t)0x01000000u; // 16 MiB
+            self->arch_state.gpr[2] = (reg_t)(DEFAULT_RAM_BASE + DEFAULT_RAM_SIZE - 16);
         }
     }
 }
@@ -434,6 +440,33 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
