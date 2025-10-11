@@ -68,7 +68,7 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x6 : ret = inst_ori; break;
             case 0x7 : ret = inst_andi; break;
             case 0x1 : ret = inst_slli; break;
-            case 0x5 : ret = (func7 == 0x20) ? inst_srai : inst_srli; break; /* shamt checked elsewhere if needed */
+            case 0x5 : ret = ((inst_fields.raw >> 30) & 1) ? inst_srai : inst_srli; break; /* check bit 30 for arith shift */
         }
         break;
     }
@@ -312,6 +312,7 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
 
