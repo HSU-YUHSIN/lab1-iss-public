@@ -289,6 +289,14 @@ DECLARE_TICK_TICK(Core) {
 /* -------- ctor/dtor -------- */
 void Core_ctor(Core *self) {
     assert(self != NULL);
+    
+    /* Initialize architectural state */
+    self->arch_state.current_pc = 0;
+    for (int i = 0; i < 32; i++) {
+        self->arch_state.gpr[i] = 0;
+    }
+    self->new_pc = 0;
+    
     MemoryMap_ctor(&self->mem_map);
 
     Tick_ctor(&self->super);
@@ -304,5 +312,6 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
