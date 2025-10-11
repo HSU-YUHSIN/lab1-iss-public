@@ -144,7 +144,7 @@ typedef enum {
     inst_srli,
     inst_srai,
     // LOAD
-    isnt_lb,
+    inst_lb,
     inst_lh,
     inst_lw,
     inst_lbu,
