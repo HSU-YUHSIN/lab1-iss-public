@@ -29,7 +29,7 @@ struct iss {
 
 int ISS_ctor(ISS **self, const char *elf_file_name) {
     assert(self != NULL);
-    if (NULL == (*self = malloc(sizeof(struct iss)))) {
+    if (NULL == (*self = calloc(1, sizeof(struct iss)))) {
         return -1;
     }
 
