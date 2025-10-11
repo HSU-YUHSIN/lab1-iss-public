@@ -326,7 +326,7 @@ void Core_ctor(Core *self) {
 #elif defined(ROM_BASE)
     const uint32_t reset_pc = (uint32_t)ROM_BASE;
 #else
-    const uint32_t reset_pc = 0x80000000u;  /* common RISC-V DRAM base */
+    const uint32_t reset_pc = 0x00000000u;  /* default: start at 0 for lab tests */
 #endif
 
     self->arch_state.current_pc = reset_pc;
@@ -345,6 +345,7 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
 
