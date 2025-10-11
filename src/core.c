@@ -97,9 +97,14 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
     reg_t *reg = self->arch_state.gpr;
     reg_t pc   = self->arch_state.current_pc;
-    reg_t rd   = inst_fields.R_TYPE.rd & 0x1F;
+
+    reg_t rd   = inst_fields.R_TYPE.rd  & 0x1F;
     reg_t rs1  = inst_fields.R_TYPE.rs1 & 0x1F;
     reg_t rs2  = inst_fields.R_TYPE.rs2 & 0x1F;
+
+    // Defensive: check bounds
+    assert(reg != NULL);
+    assert(rd < 32 && rs1 < 32 && rs2 < 32);
 
     reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm_11_0, 12);
     reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm_4_0 | (inst_fields.S_TYPE.imm_11_5 << 5)), 12);
@@ -249,6 +254,7 @@ void Core_ctor(Core *self) {
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
     self->super.vtbl                  = &vtbl;
+    // Ensure register file is zeroed
     memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
 }
 
@@ -260,7 +266,6 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
-
 
 
 
