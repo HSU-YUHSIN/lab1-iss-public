@@ -306,15 +306,31 @@ DECLARE_TICK_TICK(Core) {
 /* -------- ctor/dtor -------- */
 void Core_ctor(Core *self) {
     assert(self != NULL);
-    
+
+    /* Bring up memory map first */
+    MemoryMap_ctor(&self->mem_map);
+
     /* Initialize architectural state */
-    self->arch_state.current_pc = 0;
     for (int i = 0; i < 32; i++) {
         self->arch_state.gpr[i] = 0;
     }
-    self->new_pc = 0;
-    
-    MemoryMap_ctor(&self->mem_map);
+
+    /* Choose a reset PC compatible with typical RV platforms.
+       If your mem_map defines a canonical TEXT/DRAM base, prefer it. */
+#if defined(MEM_TEXT_BASE)
+    const uint32_t reset_pc = (uint32_t)MEM_TEXT_BASE;
+#elif defined(DRAM_BASE)
+    const uint32_t reset_pc = (uint32_t)DRAM_BASE;
+#elif defined(TEXT_BASE)
+    const uint32_t reset_pc = (uint32_t)TEXT_BASE;
+#elif defined(ROM_BASE)
+    const uint32_t reset_pc = (uint32_t)ROM_BASE;
+#else
+    const uint32_t reset_pc = 0x80000000u;  /* common RISC-V DRAM base */
+#endif
+
+    self->arch_state.current_pc = reset_pc;
+    self->new_pc = reset_pc;
 
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
@@ -329,6 +345,7 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
 
