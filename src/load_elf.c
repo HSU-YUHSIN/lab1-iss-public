@@ -2,7 +2,7 @@
 
 #include "arch.h"
 #include "common.h"
-#include "main_mem.h"
+#include "rom.h"
 
 #include <elf.h>
 #include <stdint.h>
@@ -68,9 +68,9 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
             
-            // Calculate offset and load if within bounds
-            if (prog_header.p_paddr >= MAIN_MEM_MMAP_BASE) {
-                addr_t offset = prog_header.p_paddr - MAIN_MEM_MMAP_BASE;
+            // Calculate offset from ROM base and load if within bounds
+            if (prog_header.p_paddr >= ROM_MMAP_BASE) {
+                addr_t offset = prog_header.p_paddr - ROM_MMAP_BASE;
                 if (offset < buffer_size) {
                     // Load as much as fits in the buffer
                     size_t bytes_to_load = prog_header.p_filesz;

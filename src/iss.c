@@ -68,8 +68,8 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
                                    .device_ptr = (AbstractMem *)&self_->halt_mmio };
     Core_add_device(&self_->core, halt_mmap_unit);
 
-    // load ELF into main memory, and initialize PC
-    load_elf(elf_file_name, self_->main_mem_mmio.mem, MAIN_MEM_SIZE,
+    // load ELF into ROM, and initialize PC
+    load_elf(elf_file_name, self_->rom_mmio.rom, ROM_SIZE,
              &self_->core.arch_state.current_pc);
     
     // Initialize new_pc to match current_pc
