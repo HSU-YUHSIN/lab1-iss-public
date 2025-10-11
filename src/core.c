@@ -20,52 +20,29 @@ static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
     if (rd != 0 && rd < 32) self->arch_state.gpr[rd] = val; // x0 is hardwired to 0
 }
 
-/* ---------------- manual field extraction (no bitfields) ---------------- */
-static inline uint32_t get_bits(uint32_t x, int hi, int lo) {
-    uint32_t width = (uint32_t)(hi - lo + 1);
-    uint32_t mask = (width >= 32u) ? 0xFFFFFFFFu : ((1u << width) - 1u);
-    return (x >> lo) & mask;
-}
-
-#define OPCODE(x)   get_bits((x), 6, 0)
-#define RD(x)       get_bits((x), 11, 7)
-#define FUNCT3(x)   get_bits((x), 14, 12)
-#define RS1(x)      get_bits((x), 19, 15)
-#define RS2(x)      get_bits((x), 24, 20)
-#define FUNCT7(x)   get_bits((x), 31, 25)
-
-static inline int32_t imm_i(uint32_t raw) {
-    return sext32(get_bits(raw, 31, 20), 12);
-}
-static inline int32_t imm_s(uint32_t raw) {
-    uint32_t v = (get_bits(raw, 31, 25) << 5) | get_bits(raw, 11, 7);
-    return sext32(v, 12);
-}
-static inline int32_t imm_b(uint32_t raw) {
-    uint32_t v = (get_bits(raw, 31, 31) << 12) |
-                 (get_bits(raw, 7, 7)   << 11) |
-                 (get_bits(raw, 30, 25) << 5)  |
-                 (get_bits(raw, 11, 8)  << 1);
-    return sext32(v, 13);
-}
-static inline int32_t imm_j(uint32_t raw) {
-    uint32_t v = (get_bits(raw, 31, 31) << 20) |
-                 (get_bits(raw, 19, 12) << 12) |
-                 (get_bits(raw, 20, 20) << 11) |
-                 (get_bits(raw, 30, 21) << 1);
-    return sext32(v, 21);
-}
-static inline uint32_t imm_u(uint32_t raw) {
-    return get_bits(raw, 31, 12) << 12;
-}
-static inline uint32_t shamt_imm(uint32_t raw) {
-    return get_bits(raw, 24, 20) & 0x1Fu;
-}
+/* ---------------- macros for instruction field extraction ---------------- */
+#define OPCODE(raw)   ((raw) & 0x7F)
+#define RD(raw)       (((raw) >> 7) & 0x1F)
+#define FUNCT3(raw)   (((raw) >> 12) & 0x7)
+#define RS1(raw)      (((raw) >> 15) & 0x1F)
+#define RS2(raw)      (((raw) >> 20) & 0x1F)
+#define FUNCT7(raw)   (((raw) >> 25) & 0x7F)
+#define IMM_I(raw)    (sext32((raw) >> 20, 12))
+#define IMM_S(raw)    (sext32((((raw) >> 25) << 5) | (((raw) >> 7) & 0x1F), 12))
+#define IMM_B(raw)    (sext32((((raw) >> 31) << 12) | \
+                              (((raw) >> 7) & 0x1) << 11 | \
+                              (((raw) >> 25) & 0x3F) << 5 | \
+                              (((raw) >> 8) & 0xF) << 1, 13))
+#define IMM_U(raw)    ((raw) & 0xFFFFF000)
+#define IMM_J(raw)    (sext32((((raw) >> 31) << 20) | \
+                              (((raw) >> 12) & 0xFF) << 12 | \
+                              (((raw) >> 20) & 0x1) << 11 | \
+                              (((raw) >> 21) & 0x3FF) << 1, 21))
 
 /* ---------------- fetch ---------------- */
-static inst_fields_t Core_fetch(Core *self) {
+static uint32_t Core_fetch(Core *self) {
     // fetch instruction according to self->arch_state.current_pc
-    // Enforce 4-byte alignment for instruction fetch (RV32I without traps)
+    // Enforce 4-byte alignment for instruction fetch
     if (self->arch_state.current_pc & 0x3u) {
         self->arch_state.current_pc &= ~0x3u; // silently align to word boundary
     }
@@ -73,23 +50,20 @@ static inst_fields_t Core_fetch(Core *self) {
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
 
     // little-endian pack
-    inst_fields_t ret = (inst_fields_t){0};
-    ret.raw |= (reg_t)inst_in_bytes[0];
-    ret.raw |= (reg_t)inst_in_bytes[1] << 8;
-    ret.raw |= (reg_t)inst_in_bytes[2] << 16;
-    ret.raw |= (reg_t)inst_in_bytes[3] << 24;
-    return ret;
+    uint32_t inst = ((uint32_t)inst_in_bytes[0]) |
+                    ((uint32_t)inst_in_bytes[1] << 8) |
+                    ((uint32_t)inst_in_bytes[2] << 16) |
+                    ((uint32_t)inst_in_bytes[3] << 24);
+    return inst;
 }
 
 /* ---------------- decode ---------------- */
-static inst_enum_t Core_decode(Core *self, inst_fields_t f) {
-    (void)self;
+static inst_enum_t Core_decode(uint32_t inst) {
     inst_enum_t ret = (inst_enum_t)0; // unknown by default
 
-    uint32_t raw   = f.raw;
-    reg_t opcode   = OPCODE(raw);
-    reg_t func3    = FUNCT3(raw);
-    reg_t func7    = FUNCT7(raw);
+    uint32_t opcode = OPCODE(inst);
+    uint32_t func3  = FUNCT3(inst);
+    uint32_t func7  = FUNCT7(inst);
 
     switch (opcode) {
     case OP: { /* R-type */
@@ -114,15 +88,15 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t f) {
             case 0x6: ret = inst_ori;   break;
             case 0x7: ret = inst_andi;  break;
             case 0x1: { // SLLI legality: imm[11:5]==0
-                uint32_t immI = get_bits(raw, 31, 20);
-                if ((immI & ~0x1Fu) == 0) ret = inst_slli;
+                uint32_t imm = (inst >> 20) & 0xFFF;
+                if ((imm & ~0x1Fu) == 0) ret = inst_slli;
                 break;
             }
             case 0x5: { // SRLI/SRAI legality
-                uint32_t immI = get_bits(raw, 31, 20);
-                uint32_t hi   = immI & ~0x1Fu; // imm[11:5]
+                uint32_t imm = (inst >> 20) & 0xFFF;
+                uint32_t hi  = imm & ~0x1Fu;
                 if (hi == 0x000u)      ret = inst_srli;
-                else if (hi == 0x400u) ret = inst_srai; // 0b0100000 << 5
+                else if (hi == 0x400u) ret = inst_srai;
                 break;
             }
         }
@@ -168,15 +142,13 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t f) {
 }
 
 /* ---------------- execute & commit ---------------- */
-static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
+static void Core_execute(Core *self, uint32_t inst, inst_enum_t e) {
     // default next PC = PC + 4
     self->new_pc = self->arch_state.current_pc + 4;
 
-    uint32_t raw = f.raw;
-
-    uint32_t rs1 = RS1(raw);
-    uint32_t rs2 = RS2(raw);
-    uint32_t rd  = RD(raw);
+    uint32_t rs1 = RS1(inst);
+    uint32_t rs2 = RS2(inst);
+    uint32_t rd  = RD(inst);
 
     uint32_t x1 = self->arch_state.gpr[rs1];
     uint32_t x2 = self->arch_state.gpr[rs2];
@@ -195,19 +167,19 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         case inst_and:  write_x(self, rd, x1 & x2); break;
 
         /* I-type ALU */
-        case inst_addi:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 + imm); break; }
-        case inst_slti:  { int32_t imm = imm_i(raw); write_x(self, rd, (int32_t)x1 < imm); break; }
-        case inst_sltiu: { int32_t imm = imm_i(raw); write_x(self, rd, x1 < (uint32_t)imm); break; }
-        case inst_xori:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
-        case inst_ori:   { int32_t imm = imm_i(raw); write_x(self, rd, x1 | (uint32_t)imm); break; }
-        case inst_andi:  { int32_t imm = imm_i(raw); write_x(self, rd, x1 & (uint32_t)imm); break; }
-        case inst_slli:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, x1 << sh); break; }
-        case inst_srli:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, x1 >> sh); break; }
-        case inst_srai:  { uint32_t sh = shamt_imm(raw); write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
+        case inst_addi:  { int32_t imm = IMM_I(inst); write_x(self, rd, x1 + imm); break; }
+        case inst_slti:  { int32_t imm = IMM_I(inst); write_x(self, rd, (int32_t)x1 < imm); break; }
+        case inst_sltiu: { int32_t imm = IMM_I(inst); write_x(self, rd, x1 < (uint32_t)imm); break; }
+        case inst_xori:  { int32_t imm = IMM_I(inst); write_x(self, rd, x1 ^ (uint32_t)imm); break; }
+        case inst_ori:   { int32_t imm = IMM_I(inst); write_x(self, rd, x1 | (uint32_t)imm); break; }
+        case inst_andi:  { int32_t imm = IMM_I(inst); write_x(self, rd, x1 & (uint32_t)imm); break; }
+        case inst_slli:  { uint32_t sh = (inst >> 20) & 0x1F; write_x(self, rd, x1 << sh); break; }
+        case inst_srli:  { uint32_t sh = (inst >> 20) & 0x1F; write_x(self, rd, x1 >> sh); break; }
+        case inst_srai:  { uint32_t sh = (inst >> 20) & 0x1F; write_x(self, rd, (uint32_t)((int32_t)x1 >> sh)); break; }
 
         /* LOADs */
         case inst_lb: case inst_lbu: case inst_lh: case inst_lhu: case inst_lw: {
-            int32_t imm = imm_i(raw);
+            int32_t imm = IMM_I(inst);
             uint32_t addr = x1 + imm;
             byte_t buf[4] = {0,0,0,0};
             switch (e) {
@@ -243,7 +215,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* STOREs */
         case inst_sb: case inst_sh: case inst_sw: {
-            int32_t imm = imm_s(raw);
+            int32_t imm = IMM_S(inst);
             uint32_t addr = x1 + imm;
             byte_t buf[4];
             switch (e) {
@@ -270,7 +242,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* BRANCHes */
         case inst_beq: case inst_bne: case inst_blt: case inst_bge: case inst_bltu: case inst_bgeu: {
-            int32_t imm = imm_b(raw);
+            int32_t imm = IMM_B(inst);
             int take = 0;
             switch (e) {
                 case inst_beq:  take = (x1 == x2); break;
@@ -287,14 +259,14 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* JUMPs */
         case inst_jal: {
-            int32_t imm = imm_j(raw);
+            int32_t imm = IMM_J(inst);
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = (self->arch_state.current_pc + imm) & ~0x3u;
             break;
         }
         case inst_jalr: {
-            int32_t imm = imm_i(raw);
-            uint32_t target = (x1 + imm) & ~3u; // force 4-byte alignment (no traps in this ISS)
+            int32_t imm = IMM_I(inst);
+            uint32_t target = (x1 + imm) & ~3u;
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
             break;
@@ -302,10 +274,10 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
 
         /* U-type */
         case inst_lui:
-            write_x(self, rd, imm_u(raw));
+            write_x(self, rd, IMM_U(inst));
             break;
         case inst_auipc:
-            write_x(self, rd, self->arch_state.current_pc + imm_u(raw));
+            write_x(self, rd, self->arch_state.current_pc + IMM_U(inst));
             break;
 
         default:
@@ -324,9 +296,9 @@ static void Core_update_pc(Core *self) {
 /* ---------------- tick ---------------- */
 DECLARE_TICK_TICK(Core) {
     Core *self_               = container_of(self, Core, super);
-    inst_fields_t inst_fields = Core_fetch(self_);
-    inst_enum_t   inst_enum   = Core_decode(self_, inst_fields);
-    Core_execute(self_, inst_fields, inst_enum);
+    uint32_t inst             = Core_fetch(self_);
+    inst_enum_t   inst_enum   = Core_decode(inst);
+    Core_execute(self_, inst, inst_enum);
     Core_update_pc(self_);
 }
 
