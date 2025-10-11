@@ -33,18 +33,19 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     reg_t func7  = inst_fields.R_TYPE.func7;
 
     switch (opcode) {
-    case OP: // R-type
-        switch (func3) {
-        case 0x0: ret = (func7 == 0x00) ? inst_add : inst_sub; break;
-        case 0x1: ret = inst_sll; break;
-        case 0x2: ret = inst_slt; break;
-        case 0x3: ret = inst_sltu; break;
-        case 0x4: ret = inst_xor; break;
-        case 0x5: ret = (func7 == 0x00) ? inst_srl : inst_sra; break;
-        case 0x6: ret = inst_or; break;
-        case 0x7: ret = inst_and; break;
-        }
+    case OP: {
+        if (func3 == 0x0 && func7 == 0x00) ret = inst_add;
+        else if (func3 == 0x0 && func7 == 0x20) ret = inst_sub;
+        else if (func3 == 0x1 && func7 == 0x00) ret = inst_sll;
+        else if (func3 == 0x2 && func7 == 0x00) ret = inst_slt;
+        else if (func3 == 0x3 && func7 == 0x00) ret = inst_sltu;
+        else if (func3 == 0x4 && func7 == 0x00) ret = inst_xor;
+        else if (func3 == 0x5 && func7 == 0x00) ret = inst_srl;
+        else if (func3 == 0x5 && func7 == 0x20) ret = inst_sra;
+        else if (func3 == 0x6 && func7 == 0x00) ret = inst_or;
+        else if (func3 == 0x7 && func7 == 0x00) ret = inst_and;
         break;
+    }
     case OP_IMM: // I-type
         switch (func3) {
         case 0x0: ret = inst_addi; break;
@@ -103,7 +104,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     // it might be overridden when there is a branch instruction
     self->new_pc = self->arch_state.current_pc + 4;
 
-    reg_t *reg = self->arch_state.gpr;
     reg_t pc   = self->arch_state.current_pc;
 
     reg_t rd   = inst_fields.R_TYPE.rd  & 0x1F;
@@ -125,108 +125,164 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         (inst_fields.J_TYPE.imm_19_12 << 12), 21);
 
     switch (inst_enum) {
-    // R-type
-    case inst_add:   reg[rd] = reg[rs1] + reg[rs2]; break;
-    case inst_sub:   reg[rd] = reg[rs1] - reg[rs2]; break;
-    case inst_sll:   reg[rd] = reg[rs1] << (reg[rs2] & 0x1F); break;
-    case inst_slt:   reg[rd] = (int32_t)reg[rs1] < (int32_t)reg[rs2]; break;
-    case inst_sltu:  reg[rd] = reg[rs1] < reg[rs2]; break;
-    case inst_xor:   reg[rd] = reg[rs1] ^ reg[rs2]; break;
-    case inst_srl:   reg[rd] = reg[rs1] >> (reg[rs2] & 0x1F); break;
-    case inst_sra:   reg[rd] = ((int32_t)reg[rs1]) >> (reg[rs2] & 0x1F); break;
-    case inst_or:    reg[rd] = reg[rs1] | reg[rs2]; break;
-    case inst_and:   reg[rd] = reg[rs1] & reg[rs2]; break;
+    // R-type OP instructions
+    case inst_add:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + self->arch_state.gpr[rs2];
+        break;
+    case inst_sub:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] - self->arch_state.gpr[rs2];
+        break;
+    case inst_sll:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (self->arch_state.gpr[rs2] & 0x1F);
+        break;
+    case inst_slt:
+        self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)self->arch_state.gpr[rs2];
+        break;
+    case inst_sltu:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < self->arch_state.gpr[rs2];
+        break;
+    case inst_xor:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ self->arch_state.gpr[rs2];
+        break;
+    case inst_srl:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (self->arch_state.gpr[rs2] & 0x1F);
+        break;
+    case inst_sra:
+        self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (self->arch_state.gpr[rs2] & 0x1F);
+        break;
+    case inst_or:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | self->arch_state.gpr[rs2];
+        break;
+    case inst_and:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & self->arch_state.gpr[rs2];
+        break;
 
     // I-type
-    case inst_addi:  reg[rd] = reg[rs1] + imm_i; break;
-    case inst_slli:  reg[rd] = reg[rs1] << (imm_i & 0x1F); break;
-    case inst_slti:  reg[rd] = (int32_t)reg[rs1] < (int32_t)imm_i; break;
-    case inst_sltiu: reg[rd] = reg[rs1] < imm_i; break;
-    case inst_xori:  reg[rd] = reg[rs1] ^ imm_i; break;
-    case inst_srli:  reg[rd] = reg[rs1] >> (imm_i & 0x1F); break;
-    case inst_srai:  reg[rd] = ((int32_t)reg[rs1]) >> (imm_i & 0x1F); break;
-    case inst_ori:   reg[rd] = reg[rs1] | imm_i; break;
-    case inst_andi:  reg[rd] = reg[rs1] & imm_i; break;
+    case inst_addi:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] + imm_i;
+        break;
+    case inst_slli:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] << (imm_i & 0x1F);
+        break;
+    case inst_slti:
+        self->arch_state.gpr[rd] = (int32_t)self->arch_state.gpr[rs1] < (int32_t)imm_i;
+        break;
+    case inst_sltiu:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] < imm_i;
+        break;
+    case inst_xori:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] ^ imm_i;
+        break;
+    case inst_srli:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] >> (imm_i & 0x1F);
+        break;
+    case inst_srai:
+        self->arch_state.gpr[rd] = ((int32_t)self->arch_state.gpr[rs1]) >> (imm_i & 0x1F);
+        break;
+    case inst_ori:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] | imm_i;
+        break;
+    case inst_andi:
+        self->arch_state.gpr[rd] = self->arch_state.gpr[rs1] & imm_i;
+        break;
 
     // LOAD
     case inst_lb: {
         byte_t b;
-        MemoryMap_generic_load(&self->mem_map, reg[rs1] + imm_i, 1, &b);
-        reg[rd] = sign_extend(b, 8);
+        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
+        self->arch_state.gpr[rd] = sign_extend(b, 8);
         break;
     }
     case inst_lh: {
         byte_t buf[2];
-        MemoryMap_generic_load(&self->mem_map, reg[rs1] + imm_i, 2, buf);
-        reg[rd] = sign_extend(buf[0] | (buf[1] << 8), 16);
+        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
+        self->arch_state.gpr[rd] = sign_extend(buf[0] | (buf[1] << 8), 16);
         break;
     }
     case inst_lw: {
         byte_t buf[4];
-        MemoryMap_generic_load(&self->mem_map, reg[rs1] + imm_i, 4, buf);
-        reg[rd] = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 4, buf);
+        self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
         break;
     }
     case inst_lbu: {
         byte_t b;
-        MemoryMap_generic_load(&self->mem_map, reg[rs1] + imm_i, 1, &b);
-        reg[rd] = b;
+        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 1, &b);
+        self->arch_state.gpr[rd] = b;
         break;
     }
     case inst_lhu: {
         byte_t buf[2];
-        MemoryMap_generic_load(&self->mem_map, reg[rs1] + imm_i, 2, buf);
-        reg[rd] = buf[0] | (buf[1] << 8);
+        MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
+        self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8);
         break;
     }
 
     // STORE
     case inst_sb: {
-        byte_t b = reg[rs2] & 0xFF;
-        MemoryMap_generic_store(&self->mem_map, reg[rs1] + imm_s, 1, &b);
+        byte_t b = self->arch_state.gpr[rs2] & 0xFF;
+        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 1, &b);
         break;
     }
     case inst_sh: {
-        byte_t buf[2] = { reg[rs2] & 0xFF, (reg[rs2] >> 8) & 0xFF };
-        MemoryMap_generic_store(&self->mem_map, reg[rs1] + imm_s, 2, buf);
+        byte_t buf[2] = { self->arch_state.gpr[rs2] & 0xFF, (self->arch_state.gpr[rs2] >> 8) & 0xFF };
+        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 2, buf);
         break;
     }
     case inst_sw: {
         byte_t buf[4] = {
-            reg[rs2] & 0xFF, (reg[rs2] >> 8) & 0xFF,
-            (reg[rs2] >> 16) & 0xFF, (reg[rs2] >> 24) & 0xFF
+            self->arch_state.gpr[rs2] & 0xFF, (self->arch_state.gpr[rs2] >> 8) & 0xFF,
+            (self->arch_state.gpr[rs2] >> 16) & 0xFF, (self->arch_state.gpr[rs2] >> 24) & 0xFF
         };
-        MemoryMap_generic_store(&self->mem_map, reg[rs1] + imm_s, 4, buf);
+        MemoryMap_generic_store(&self->mem_map, self->arch_state.gpr[rs1] + imm_s, 4, buf);
         break;
     }
 
     // BRANCH
-    case inst_beq: if (reg[rs1] == reg[rs2]) self->new_pc = pc + imm_b; break;
-    case inst_bne: if (reg[rs1] != reg[rs2]) self->new_pc = pc + imm_b; break;
-    case inst_blt: if ((int32_t)reg[rs1] < (int32_t)reg[rs2]) self->new_pc = pc + imm_b; break;
-    case inst_bge: if ((int32_t)reg[rs1] >= (int32_t)reg[rs2]) self->new_pc = pc + imm_b; break;
-    case inst_bltu: if (reg[rs1] < reg[rs2]) self->new_pc = pc + imm_b; break;
-    case inst_bgeu: if (reg[rs1] >= reg[rs2]) self->new_pc = pc + imm_b; break;
+    case inst_beq:
+        if (self->arch_state.gpr[rs1] == self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
+    case inst_bne:
+        if (self->arch_state.gpr[rs1] != self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
+    case inst_blt:
+        if ((int32_t)self->arch_state.gpr[rs1] < (int32_t)self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
+    case inst_bge:
+        if ((int32_t)self->arch_state.gpr[rs1] >= (int32_t)self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
+    case inst_bltu:
+        if (self->arch_state.gpr[rs1] < self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
+    case inst_bgeu:
+        if (self->arch_state.gpr[rs1] >= self->arch_state.gpr[rs2])
+            self->new_pc = pc + imm_b;
+        break;
 
     // JAL
     case inst_jal:
-        reg[rd] = pc + 4;
+        self->arch_state.gpr[rd] = pc + 4;
         self->new_pc = pc + imm_j;
         break;
     // JALR
     case inst_jalr:
-        reg[rd] = pc + 4;
-        self->new_pc = (reg[rs1] + imm_i) & ~1;
+        self->arch_state.gpr[rd] = pc + 4;
+        self->new_pc = (self->arch_state.gpr[rs1] + imm_i) & ~1;
         break;
 
     // LUI
     case inst_lui:
-        reg[rd] = imm_u;
+        self->arch_state.gpr[rd] = imm_u;
         break;
 
     // AUIPC
     case inst_auipc:
-        reg[rd] = pc + imm_u;
+        self->arch_state.gpr[rd] = pc + imm_u;
         break;
 
     default:
@@ -235,7 +291,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     }
 
     // x0 is always zero
-    reg[0] = 0;
+    self->arch_state.gpr[0] = 0;
 }
 
 static void Core_update_pc(Core *self) {
