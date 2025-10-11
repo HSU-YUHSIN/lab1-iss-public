@@ -67,8 +67,25 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
             case 0x4 : ret = inst_xori; break;
             case 0x6 : ret = inst_ori; break;
             case 0x7 : ret = inst_andi; break;
-            case 0x1 : ret = inst_slli; break;
-            case 0x5 : ret = ((inst_fields.raw >> 30) & 1) ? inst_srai : inst_srli; break; /* check bit 30 for arith shift */
+            case 0x1 : { /* SLLI legality: imm[11:5] must be 0 in RV32I */
+                uint32_t imm = inst_fields.I_TYPE.imm_11_0;
+                if ((imm & ~0x1Fu) == 0) {
+                    ret = inst_slli; /* legal */
+                }
+                /* else: illegal encoding -> leave as unknown */
+                break;
+            }
+            case 0x5 : { /* SRLI/SRAI legality check */
+                uint32_t imm = inst_fields.I_TYPE.imm_11_0;
+                uint32_t hi  = imm & ~0x1Fu; /* = imm[11:5] << 5 */
+                if (hi == 0x000u) {
+                    ret = inst_srli; /* SRLI: imm[11:5]==0 */
+                } else if (hi == 0x400u) {
+                    ret = inst_srai; /* SRAI: imm[11:5]==0b0100000 */
+                }
+                /* else: illegal encoding -> unknown */
+                break;
+            }
         }
         break;
     }
@@ -249,7 +266,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
         }
         case inst_jalr: {
             int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
-            uint32_t target = (x1 + imm) & ~1u;
+            uint32_t target = (x1 + imm) & ~3u; /* FIX: force 4-byte alignment for RV32I */
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
             break;
@@ -312,6 +329,7 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
 
 
 
