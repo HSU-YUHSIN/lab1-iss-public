@@ -23,6 +23,10 @@ static inline void write_x(Core *self, uint32_t rd, uint32_t val) {
 /* ---------------- fetch ---------------- */
 static inst_fields_t Core_fetch(Core *self) {
     // fetch instruction according to self->arch_state.current_pc
+    // Enforce 4-byte alignment for instruction fetch (RV32I without traps)
+    if (self->arch_state.current_pc & 0x3u) {
+        self->arch_state.current_pc &= ~0x3u; // silently align to word boundary
+    }
     byte_t inst_in_bytes[4] = {0,0,0,0};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
 
@@ -235,7 +239,7 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                 case inst_bgeu: take = (x1 >= x2); break;
                 default: break;
             }
-            if (take) self->new_pc = self->arch_state.current_pc + imm;
+            if (take) self->new_pc = (self->arch_state.current_pc + imm) & ~0x3u;
             break;
         }
 
@@ -246,12 +250,12 @@ static void Core_execute(Core *self, inst_fields_t f, inst_enum_t e) {
                                  (f.J_TYPE.imm_11    << 11) |
                                  (f.J_TYPE.imm_10_1  << 1), 21);
             write_x(self, rd, self->arch_state.current_pc + 4);
-            self->new_pc = self->arch_state.current_pc + imm;
+            self->new_pc = (self->arch_state.current_pc + imm) & ~0x3u;
             break;
         }
         case inst_jalr: {
             int32_t imm = sext32(f.I_TYPE.imm_11_0, 12);
-            uint32_t target = (x1 + imm) & ~1u; // set LSB to 0 per RISC-V spec
+            uint32_t target = (x1 + imm) & ~3u; // force 4-byte alignment (no traps in this ISS)
             write_x(self, rd, self->arch_state.current_pc + 4);
             self->new_pc = target;
             break;
@@ -297,7 +301,7 @@ void Core_ctor(Core *self) {
     // initialize architectural state
     for (int i = 0; i < 32; i++) self->arch_state.gpr[i] = 0;
 
-    // Choose reset PC: prefer known bases if defined, else 0x00000000 for lab harness
+    // Choose reset PC: prefer known bases if defined, else 0x80000000u for lab harness
     #if defined(MEM_TEXT_BASE)
         const uint32_t reset_pc = (uint32_t)MEM_TEXT_BASE;
     #elif defined(DRAM_BASE)
@@ -307,7 +311,7 @@ void Core_ctor(Core *self) {
     #elif defined(ROM_BASE)
         const uint32_t reset_pc = (uint32_t)ROM_BASE;
     #else
-        const uint32_t reset_pc = 0x00000000u;
+        const uint32_t reset_pc = 0x80000000u;  /* common RISC-V DRAM base */
     #endif
     self->arch_state.current_pc = reset_pc;
     self->new_pc                = reset_pc;
