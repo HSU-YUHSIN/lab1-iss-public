@@ -2,7 +2,7 @@
 
 #include "arch.h"
 #include "common.h"
-#include "rom.h"
+#include "main_mem.h"
 
 #include <elf.h>
 #include <stdint.h>
@@ -67,7 +67,7 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
             LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
-            if (fread(&buffer[prog_header.p_paddr - ROM_MMAP_BASE],
+            if (fread(&buffer[prog_header.p_paddr - MAIN_MEM_MMAP_BASE],
                       prog_header.p_filesz, 1, f) != 1) {
                 fprintf(stderr, "Failed to load section in ELF file\n");
                 goto end;
@@ -78,3 +78,4 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 end:
     fclose(f);
 }
+
