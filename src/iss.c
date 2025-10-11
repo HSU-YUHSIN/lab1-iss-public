@@ -69,7 +69,7 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
     Core_add_device(&self_->core, halt_mmap_unit);
 
     // load ELF into main memory, and initialize PC
-    load_elf(elf_file_name, self_->rom_mmio.rom, ROM_SIZE,
+    load_elf(elf_file_name, self_->main_mem_mmio.mem, MAIN_MEM_SIZE,
              &self_->core.arch_state.current_pc);
 
     return 0;
@@ -128,3 +128,4 @@ void ISS_set_main_memory(ISS *self,
 bool ISS_get_halt(ISS *self) {
     return self->halt_mmio.halt_flag;
 }
+
