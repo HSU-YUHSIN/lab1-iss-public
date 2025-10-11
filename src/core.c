@@ -1,5 +1,4 @@
 #include "core.h"
-
 #include "inst.h"
 #include "tick.h"
 #include "arch.h"
@@ -9,7 +8,6 @@
 #include <stddef.h>
 #include <assert.h>
 
-// Helper for sign extension
 static inline reg_t sign_extend(reg_t value, int bits) {
     reg_t mask = 1U << (bits - 1);
     return (value ^ mask) - mask;
@@ -35,7 +33,6 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     reg_t func3  = inst_fields.R_TYPE.func3;
     reg_t func7  = inst_fields.R_TYPE.func7;
 
-    // decode main opcodes
     switch (opcode) {
     case OP: // R-type (add, sub, etc)
         switch (func3) {
@@ -103,20 +100,26 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     return ret;
 }
 
-// ISS execute and commit stage (two-in-one)
+// ISS execute and commit stage
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
     reg_t *reg = self->arch_state.gpr;
     reg_t pc = self->arch_state.current_pc;
     reg_t rs1 = inst_fields.R_TYPE.rs1;
     reg_t rs2 = inst_fields.R_TYPE.rs2;
     reg_t rd = inst_fields.R_TYPE.rd;
-    reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm, 12);
-    reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm4_0 | (inst_fields.S_TYPE.imm11_5 << 5)), 12);
-    reg_t imm_b = sign_extend((inst_fields.B_TYPE.imm11 << 11) | (inst_fields.B_TYPE.imm10_5 << 5) |
-                             (inst_fields.B_TYPE.imm4_1 << 1) | (inst_fields.B_TYPE.imm12 << 12), 13);
-    reg_t imm_u = inst_fields.U_TYPE.imm << 12;
-    reg_t imm_j = sign_extend((inst_fields.J_TYPE.imm20 << 20) | (inst_fields.J_TYPE.imm10_1 << 1) |
-                             (inst_fields.J_TYPE.imm11 << 11) | (inst_fields.J_TYPE.imm19_12 << 12), 21);
+    reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm_11_0, 12);
+    reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm_4_0 | (inst_fields.S_TYPE.imm_11_5 << 5)), 12);
+    reg_t imm_b = sign_extend(
+        (inst_fields.B_TYPE.imm_11 << 11) |
+        (inst_fields.B_TYPE.imm_10_5 << 5) |
+        (inst_fields.B_TYPE.imm_4_1 << 1) |
+        (inst_fields.B_TYPE.imm_12 << 12), 13);
+    reg_t imm_u = inst_fields.U_TYPE.imm_31_12 << 12;
+    reg_t imm_j = sign_extend(
+        (inst_fields.J_TYPE.imm_20 << 20) |
+        (inst_fields.J_TYPE.imm_10_1 << 1) |
+        (inst_fields.J_TYPE.imm_11 << 11) |
+        (inst_fields.J_TYPE.imm_19_12 << 12), 21);
 
     self->new_pc = pc + 4; // default
 
