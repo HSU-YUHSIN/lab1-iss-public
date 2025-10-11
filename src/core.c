@@ -249,7 +249,6 @@ void Core_ctor(Core *self) {
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
     self->super.vtbl                  = &vtbl;
-    // Ensure registers are cleared
     memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
 }
 
