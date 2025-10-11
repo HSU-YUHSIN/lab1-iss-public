@@ -2,7 +2,7 @@
 
 #include "arch.h"
 #include "common.h"
-#include "main_mem.h"
+#include "rom.h"
 
 #include <elf.h>
 #include <stdint.h>
@@ -60,23 +60,17 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 
         /* try to load each "loadable" sections into buffer */
         if (prog_header.p_type == PT_LOAD && prog_header.p_filesz > 0) {
+            if (fseek(f, prog_header.p_offset, SEEK_SET) != 0) {
+                fprintf(stderr, "Fail to seek the file\n");
+                goto end;
+            }
             LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
-            
-            // Only load segments within main memory range
-            if (prog_header.p_paddr >= MAIN_MEM_MMAP_BASE) {
-                addr_t offset = prog_header.p_paddr - MAIN_MEM_MMAP_BASE;
-                if (offset + prog_header.p_filesz <= buffer_size) {
-                    if (fseek(f, prog_header.p_offset, SEEK_SET) != 0) {
-                        fprintf(stderr, "Fail to seek the file\n");
-                        goto end;
-                    }
-                    if (fread(&buffer[offset], prog_header.p_filesz, 1, f) != 1) {
-                        fprintf(stderr, "Failed to load section in ELF file\n");
-                        goto end;
-                    }
-                }
+            if (fread(&buffer[prog_header.p_paddr - ROM_MMAP_BASE],
+                      prog_header.p_filesz, 1, f) != 1) {
+                fprintf(stderr, "Failed to load section in ELF file\n");
+                goto end;
             }
         }
     }
