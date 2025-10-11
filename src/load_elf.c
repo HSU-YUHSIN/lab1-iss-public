@@ -60,23 +60,24 @@ void load_elf(const char *file_name, byte_t *buffer, unsigned long buffer_size, 
 
         /* try to load each "loadable" sections into buffer */
         if (prog_header.p_type == PT_LOAD && prog_header.p_filesz > 0) {
+            if (fseek(f, prog_header.p_offset, SEEK_SET) != 0) {
+                fprintf(stderr, "Fail to seek the file\n");
+                goto end;
+            }
             LOG("Load a lodable segment with p_paddr 0x%08x, p_memsz 0x%08x "
                 "and p_filesz: 0x%08x\n",
                 prog_header.p_paddr, prog_header.p_memsz, prog_header.p_filesz);
             
-            // Only load segments that fall within main memory range
-            if (prog_header.p_paddr >= MAIN_MEM_MMAP_BASE &&
-                prog_header.p_paddr < MAIN_MEM_MMAP_BASE + buffer_size) {
-                
+            // Calculate offset and load if within bounds
+            if (prog_header.p_paddr >= MAIN_MEM_MMAP_BASE) {
                 addr_t offset = prog_header.p_paddr - MAIN_MEM_MMAP_BASE;
-                
-                // Ensure we don't overflow the buffer
-                if (offset + prog_header.p_filesz <= buffer_size) {
-                    if (fseek(f, prog_header.p_offset, SEEK_SET) != 0) {
-                        fprintf(stderr, "Fail to seek the file\n");
-                        goto end;
+                if (offset < buffer_size) {
+                    // Load as much as fits in the buffer
+                    size_t bytes_to_load = prog_header.p_filesz;
+                    if (offset + bytes_to_load > buffer_size) {
+                        bytes_to_load = buffer_size - offset;
                     }
-                    if (fread(&buffer[offset], prog_header.p_filesz, 1, f) != 1) {
+                    if (fread(&buffer[offset], bytes_to_load, 1, f) != 1) {
                         fprintf(stderr, "Failed to load section in ELF file\n");
                         goto end;
                     }
