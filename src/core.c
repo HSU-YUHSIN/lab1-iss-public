@@ -401,6 +401,29 @@ void Core_ctor(Core *self) {
     self->arch_state.current_pc = 0;
     self->new_pc = 0;
     memset(self->arch_state.gpr, 0, sizeof(self->arch_state.gpr));
+    // Initialize stack pointer (x2) to top of RAM so prologue stores are valid.
+    // Try multiple common macro names from mem_map.h used in lab templates.
+    {
+        reg_t ram_base = 0;
+        reg_t ram_size = 0;
+        #if defined(MEM_DRAM_BASE) && defined(MEM_DRAM_SIZE)
+            ram_base = (reg_t)MEM_DRAM_BASE;
+            ram_size = (reg_t)MEM_DRAM_SIZE;
+        #elif defined(MEM_RAM_BASE) && defined(MEM_RAM_SIZE)
+            ram_base = (reg_t)MEM_RAM_BASE;
+            ram_size = (reg_t)MEM_RAM_SIZE;
+        #elif defined(DRAM_BASE) && defined(DRAM_SIZE)
+            ram_base = (reg_t)DRAM_BASE;
+            ram_size = (reg_t)DRAM_SIZE;
+        #elif defined(RAM_BASE) && defined(RAM_SIZE)
+            ram_base = (reg_t)RAM_BASE;
+            ram_size = (reg_t)RAM_SIZE;
+        #endif
+        if (ram_size != 0) {
+            // Leave a small redzone (16B) and set sp to top of RAM
+            self->arch_state.gpr[2] = (reg_t)(ram_base + ram_size - 16);
+        }
+    }
 }
 
 void Core_dtor(Core *self) {
@@ -411,6 +434,33 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
