@@ -122,6 +122,7 @@ typedef enum {
  * It should be generated in ISS_decode() stage
  */
 typedef enum {
+    inst_invalid = 0,
     // OP
     inst_add,
     inst_sub,
