@@ -41,36 +41,31 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
     TextBuffer_ctor(&self_->text_buffer_mmio);
     Halt_ctor(&self_->halt_mmio);
 
-    // add ROM into core's mmap
-    mmap_unit_t ROM_mmap_unit = { .addr_bound = { .first = ROM_MMAP_BASE,
-                                                  .second = ROM_MMAP_BASE + ROM_SIZE },
+    // map devices into core's memory map
+    mmap_unit_t rom_mmap_unit = { .addr_bound = { .first = ROM_MMAP_BASE, .second = ROM_MMAP_BASE + ROM_SIZE },
                                   .device_ptr = (AbstractMem *)&self_->rom_mmio };
-    Core_add_device(&self_->core, ROM_mmap_unit);
+    Core_add_device(&self_->core, rom_mmap_unit);
 
-    // add main memory into core's mmap
-    mmap_unit_t main_mem_mmap_unit = {
-        .addr_bound = { .first = MAIN_MEM_MMAP_BASE, .second = MAIN_MEM_MMAP_BASE + MAIN_MEM_SIZE },
-        .device_ptr = (AbstractMem *)&self_->main_mem_mmio
-    };
+    mmap_unit_t main_mem_mmap_unit = { .addr_bound = { .first = MAIN_MEM_MMAP_BASE, .second = MAIN_MEM_MMAP_BASE + MAIN_MEM_SIZE },
+                                       .device_ptr = (AbstractMem *)&self_->main_mem_mmio };
     Core_add_device(&self_->core, main_mem_mmap_unit);
 
-    // add text buffer into core's mmap
-    mmap_unit_t text_buffer_mmap_unit = {
-        .addr_bound = { .first  = TEXT_BUFFER_MMAP_BASE,
-                        .second = TEXT_BUFFER_MMAP_BASE + TEXT_BUFFER_SIZE },
-        .device_ptr = (AbstractMem *)&self_->text_buffer_mmio
-    };
+    mmap_unit_t text_buffer_mmap_unit = { .addr_bound = { .first = 0x10000000, .second = 0x10000001 },
+                                          .device_ptr = (AbstractMem *)&self_->text_buffer_mmio };
     Core_add_device(&self_->core, text_buffer_mmap_unit);
 
-    // add halt flag into core's mmap
-    mmap_unit_t halt_mmap_unit = { .addr_bound = { .first = HALT_MMAP_BASE,
-                                                   .second = HALT_MMAP_BASE + HALT_SIZE },
+    mmap_unit_t halt_mmap_unit = { .addr_bound = { .first = HALT_MMAP_BASE, .second = HALT_MMAP_BASE + HALT_SIZE },
                                    .device_ptr = (AbstractMem *)&self_->halt_mmio };
     Core_add_device(&self_->core, halt_mmap_unit);
 
-    // load ELF into main memory, and initialize PC
-    load_elf(elf_file_name, self_->rom_mmio.rom, ROM_SIZE,
-             &self_->core.arch_state.current_pc);
+    // load ELF into ROM, and initialize PC
+    load_elf(elf_file_name, self_->rom_mmio.rom, ROM_SIZE, &self_->core.arch_state.current_pc);
+
+    // *** IMPORTANT FIX ***
+    // Copy ROM contents to main memory so instructions/data are at 0x80000000
+    memcpy(self_->main_mem_mmio.mem, self_->rom_mmio.rom, ROM_SIZE);
+
+    // PC should be set to entry point from ELF (already done by load_elf)
 
     return 0;
 }
@@ -115,14 +110,14 @@ void ISS_get_main_memory(const ISS *self,
                          const addr_t base_addr,
                          const unsigned int length,
                          byte_t *buffer) {
-    //
+    // implement if needed
 }
 
 void ISS_set_main_memory(ISS *self,
                          const addr_t base_addr,
                          const unsigned int length,
                          const byte_t *ref_data) {
-    //
+    // implement if needed
 }
 
 bool ISS_get_halt(ISS *self) {
