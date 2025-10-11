@@ -5,7 +5,7 @@
 #include "arch.h"
 
 #define MAIN_MEM_MMAP_BASE 0x80000000
-#define MAIN_MEM_SIZE 0x10000
+#define MAIN_MEM_SIZE 0x200000 // Increased to 2MB for robust ELF/test support
 
 typedef struct {
     AbstractMem super;
