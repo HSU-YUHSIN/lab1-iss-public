@@ -52,7 +52,10 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
         case 0x2: ret = inst_slti; break;
         case 0x3: ret = inst_sltiu; break;
         case 0x4: ret = inst_xori; break;
-        case 0x5: ret = (func7 == 0x00) ? inst_srli : inst_srai; break;
+        case 0x5: 
+            // For shift immediates, check bit 30 (imm[10])
+            ret = ((inst_fields.I_TYPE.imm_11_0 >> 10) & 1) ? inst_srai : inst_srli;
+            break;
         case 0x6: ret = inst_ori; break;
         case 0x7: ret = inst_andi; break;
         }
