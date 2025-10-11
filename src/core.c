@@ -14,6 +14,41 @@ static inline reg_t sign_extend(reg_t value, int bits) {
     return (value ^ mask) - mask;
 }
 
+// ---- portable field extractors: avoid non-portable bitfields ----
+static inline uint32_t OP_OF(uint32_t insn)    { return insn & 0x7F; }
+static inline uint32_t RD_OF(uint32_t insn)    { return (insn >> 7) & 0x1F; }
+static inline uint32_t FUNCT3_OF(uint32_t insn){ return (insn >> 12) & 0x7; }
+static inline uint32_t RS1_OF(uint32_t insn)   { return (insn >> 15) & 0x1F; }
+static inline uint32_t RS2_OF(uint32_t insn)   { return (insn >> 20) & 0x1F; }
+static inline uint32_t FUNCT7_OF(uint32_t insn){ return (insn >> 25) & 0x7F; }
+
+static inline int32_t IMM_I_OF(uint32_t insn) {
+    // sign-extended imm[31:20]
+    return (int32_t)insn >> 20;
+}
+static inline int32_t IMM_S_OF(uint32_t insn) {
+    // imm[11:5]=[31:25], imm[4:0]=[11:7]
+    uint32_t imm = ((insn >> 25) << 5) | ((insn >> 7) & 0x1F);
+    return (int32_t)((imm ^ (1u << 11)) - (1u << 11)); // sign-extend 12-bit
+}
+static inline int32_t IMM_B_OF(uint32_t insn) {
+    // imm[12|10:5|4:1|11]
+    uint32_t imm = (((insn >> 31) & 0x1) << 12) |
+                   (((insn >> 25) & 0x3F) << 5)  |
+                   (((insn >> 8)  & 0xF)  << 1)  |
+                   (((insn >> 7)  & 0x1)  << 11);
+    return (int32_t)((imm ^ (1u << 12)) - (1u << 12)); // sign-extend 13-bit
+}
+static inline uint32_t IMM_U_OF(uint32_t insn) { return insn & 0xFFFFF000u; }
+static inline int32_t IMM_J_OF(uint32_t insn) {
+    // imm[20|10:1|11|19:12]
+    uint32_t imm = (((insn >> 31) & 0x1)   << 20) |
+                   (((insn >> 21) & 0x3FF) << 1)  |
+                   (((insn >> 20) & 0x1)   << 11) |
+                   (((insn >> 12) & 0xFF)  << 12);
+    return (int32_t)((imm ^ (1u << 20)) - (1u << 20)); // sign-extend 21-bit
+}
+
 static inst_fields_t Core_fetch(Core *self) {
     byte_t inst_in_bytes[4] = {};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
@@ -28,9 +63,10 @@ static inst_fields_t Core_fetch(Core *self) {
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     inst_enum_t ret = inst_invalid;
 
-    reg_t opcode = inst_fields.R_TYPE.opcode;
-    reg_t func3  = inst_fields.R_TYPE.func3;
-    reg_t func7  = inst_fields.R_TYPE.func7;
+    uint32_t insn = (uint32_t)inst_fields.raw;
+    reg_t opcode = OP_OF(insn);
+    reg_t func3  = FUNCT3_OF(insn);
+    reg_t func7  = FUNCT7_OF(insn);
 
     switch (opcode) {
     case OP: {
@@ -49,13 +85,14 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     case OP_IMM: // I-type
         switch (func3) {
         case 0x0: ret = inst_addi; break;
-        case 0x1: ret = inst_slli; break;
+        case 0x1: // SLLI requires funct7 == 0x00 in RV32I
+            ret = (FUNCT7_OF(insn) == 0x00) ? inst_slli : inst_invalid;
+            break;
         case 0x2: ret = inst_slti; break;
         case 0x3: ret = inst_sltiu; break;
         case 0x4: ret = inst_xori; break;
-        case 0x5: 
-            // For shift immediates, check bit 30 (imm[10])
-            ret = ((inst_fields.I_TYPE.imm_11_0 >> 10) & 1) ? inst_srai : inst_srli;
+        case 0x5: // SRLI/SRAI: bit 30 distinguishes
+            ret = ((insn >> 30) & 1u) ? inst_srai : inst_srli;
             break;
         case 0x6: ret = inst_ori; break;
         case 0x7: ret = inst_andi; break;
@@ -106,23 +143,16 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     reg_t pc   = self->arch_state.current_pc;
 
-    reg_t rd   = inst_fields.R_TYPE.rd  & 0x1F;
-    reg_t rs1  = inst_fields.R_TYPE.rs1 & 0x1F;
-    reg_t rs2  = inst_fields.R_TYPE.rs2 & 0x1F;
+    uint32_t insn = (uint32_t)inst_fields.raw;
+    reg_t rd   = RD_OF(insn);
+    reg_t rs1  = RS1_OF(insn);
+    reg_t rs2  = RS2_OF(insn);
 
-    reg_t imm_i = sign_extend(inst_fields.I_TYPE.imm_11_0, 12);
-    reg_t imm_s = sign_extend((inst_fields.S_TYPE.imm_4_0 | (inst_fields.S_TYPE.imm_11_5 << 5)), 12);
-    reg_t imm_b = sign_extend(
-        (inst_fields.B_TYPE.imm_11 << 11) |
-        (inst_fields.B_TYPE.imm_10_5 << 5) |
-        (inst_fields.B_TYPE.imm_4_1 << 1) |
-        (inst_fields.B_TYPE.imm_12 << 12), 13);
-    reg_t imm_u = inst_fields.U_TYPE.imm_31_12 << 12;
-    reg_t imm_j = sign_extend(
-        (inst_fields.J_TYPE.imm_20 << 20) |
-        (inst_fields.J_TYPE.imm_10_1 << 1) |
-        (inst_fields.J_TYPE.imm_11 << 11) |
-        (inst_fields.J_TYPE.imm_19_12 << 12), 21);
+    reg_t imm_i = (reg_t)IMM_I_OF(insn);
+    reg_t imm_s = (reg_t)IMM_S_OF(insn);
+    reg_t imm_b = (reg_t)IMM_B_OF(insn);
+    reg_t imm_u = (reg_t)IMM_U_OF(insn);
+    reg_t imm_j = (reg_t)IMM_J_OF(insn);
 
     switch (inst_enum) {
     // R-type OP instructions
@@ -217,14 +247,17 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         byte_t buf[2];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
         if (rd != 0)
-            self->arch_state.gpr[rd] = sign_extend(buf[0] | (buf[1] << 8), 16);
+            self->arch_state.gpr[rd] = sign_extend((reg_t)buf[0] | ((reg_t)buf[1] << 8), 16);
         break;
     }
     case inst_lw: {
         byte_t buf[4];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 4, buf);
         if (rd != 0)
-            self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
+            self->arch_state.gpr[rd] = (reg_t)buf[0]
+                                     | ((reg_t)buf[1] << 8)
+                                     | ((reg_t)buf[2] << 16)
+                                     | ((reg_t)buf[3] << 24);
         break;
     }
     case inst_lbu: {
@@ -238,7 +271,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         byte_t buf[2];
         MemoryMap_generic_load(&self->mem_map, self->arch_state.gpr[rs1] + imm_i, 2, buf);
         if (rd != 0)
-            self->arch_state.gpr[rd] = buf[0] | (buf[1] << 8);
+            self->arch_state.gpr[rd] = (reg_t)buf[0] | ((reg_t)buf[1] << 8);
         break;
     }
 
@@ -318,6 +351,9 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
     // Note: x0 protection is handled by checking (rd != 0) before each write
+
+    // Ensure x0 is always zero regardless of any path
+    self->arch_state.gpr[0] = 0;
 }
 
 static void Core_update_pc(Core *self) {
@@ -358,6 +394,34 @@ void Core_dtor(Core *self) {
 int Core_add_device(Core *self, mmap_unit_t new_device) {
     return MemoryMap_add_device(&self->mem_map, new_device);
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
