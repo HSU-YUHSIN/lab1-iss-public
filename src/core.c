@@ -12,12 +12,10 @@
 #include <stdio.h>
 
 /* ================================================================
- *                TRACE (set to 1 to enable)
- *   Build with: -DISS_TRACE=1   (or edit the define below)
+ *                  TRACE: ENABLED BY DEFAULT
+ *   (No CMake flags required; comment out the define to mute.)
  * ================================================================ */
-#ifndef ISS_TRACE
-#define ISS_TRACE 0
-#endif
+#define ISS_TRACE 1
 
 #if ISS_TRACE
   #define TRACE(fmt, ...) do { fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__); fflush(stderr); } while (0)
@@ -35,9 +33,9 @@ static inline reg_t add32(reg_t a, int32_t b) {
     return (reg_t)((uint32_t)a + (uint32_t)b);
 }
 
-/* bit slicing & sign-extension */
-#define GETBITS(x,hi,lo) (((x) >> (lo)) & (uint32_t)((1u << ((hi)-(lo)+1)) - 1u))
-#define SEXT(val,bits)   ((int32_t)((int32_t)((uint32_t)(val) << (32-(bits))) >> (32-(bits))))
+/* bit slicing & sign-extension; operate on uint32_t explicitly */
+#define GETBITS32(x,hi,lo) ( ((uint32_t)(x) >> (lo)) & (uint32_t)((1u << ((hi)-(lo)+1)) - 1u) )
+#define SEXT(val,bits)     ((int32_t)((int32_t)((uint32_t)(val) << (32-(bits))) >> (32-(bits))))
 
 /* ----------------------------- Fetch ---------------------------- */
 static inst_fields_t Core_fetch(Core *self) {
@@ -56,7 +54,8 @@ static inst_fields_t Core_fetch(Core *self) {
 /* ----------------------------- Decode --------------------------- */
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     (void)self;
-    reg_t opcode = inst_fields.raw & 0x7Fu;
+    uint32_t raw32 = (uint32_t)inst_fields.raw;
+    uint32_t opcode = GETBITS32(raw32, 6, 0);
     inst_enum_t ret = (inst_enum_t)0;
 
     switch (opcode) {
@@ -83,28 +82,32 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     /* default next PC = PC + 4 (mod 2^32) */
     self->new_pc = add32(pc, 4);
 
-    reg_t raw    = inst_fields.raw;
-    reg_t opcode = GETBITS(raw, 6, 0);
-    reg_t rd     = GETBITS(raw, 11, 7);
-    reg_t funct3 = GETBITS(raw, 14, 12);
-    reg_t rs1    = GETBITS(raw, 19, 15);
-    reg_t rs2    = GETBITS(raw, 24, 20);
-    reg_t funct7 = GETBITS(raw, 31, 25);
+    /* Always work from a uint32_t copy for field extraction */
+    uint32_t raw32 = (uint32_t)inst_fields.raw;
+    uint32_t opcode = GETBITS32(raw32, 6, 0);
+    uint32_t rd     = GETBITS32(raw32, 11, 7);
+    uint32_t funct3 = GETBITS32(raw32, 14, 12);
+    uint32_t rs1    = GETBITS32(raw32, 19, 15);
+    uint32_t rs2    = GETBITS32(raw32, 24, 20);
+    uint32_t funct7 = GETBITS32(raw32, 31, 25);
 
     reg_t *x = self->arch_state.x;
 
-    /* immediates (RV32I) */
-    int32_t imm_i = SEXT(GETBITS(raw, 31, 20), 12);
-    int32_t imm_s = SEXT(((GETBITS(raw,31,25) << 5) | GETBITS(raw,11,7)), 12);
-    int32_t imm_b = SEXT(((GETBITS(raw,31,31) << 12) |
-                          (GETBITS(raw, 7, 7) << 11) |
-                          (GETBITS(raw,30,25) << 5 ) |
-                          (GETBITS(raw,11, 8) << 1 )), 13);
-    reg_t   imm_u = (raw & 0xFFFFF000u);
-    int32_t imm_j = SEXT(((GETBITS(raw,31,31) << 20) |
-                          (GETBITS(raw,19,12) << 12) |
-                          (GETBITS(raw,20,20) << 11) |
-                          (GETBITS(raw,30,21) << 1 )), 21);
+    /* immediates (RV32I) from raw32 */
+    int32_t imm_i = SEXT(GETBITS32(raw32, 31, 20), 12);
+    int32_t imm_s = SEXT(((GETBITS32(raw32,31,25) << 5) | GETBITS32(raw32,11,7)), 12);
+    int32_t imm_b = SEXT(((GETBITS32(raw32,31,31) << 12) |
+                          (GETBITS32(raw32, 7, 7) << 11) |
+                          (GETBITS32(raw32,30,25) << 5 ) |
+                          (GETBITS32(raw32,11, 8) << 1 )), 13);
+    reg_t   imm_u = (reg_t)(raw32 & 0xFFFFF000u);
+    int32_t imm_j = SEXT(((GETBITS32(raw32,31,31) << 20) |
+                          (GETBITS32(raw32,19,12) << 12) |
+                          (GETBITS32(raw32,20,20) << 11) |
+                          (GETBITS32(raw32,30,21) << 1 )), 21);
+
+    /* one-line opcode trace to confirm we’re executing this file */
+    TRACE("pc=%08x raw=%08x opc=%02x\n", (unsigned)pc, (unsigned)raw32, (unsigned)opcode);
 
     switch (opcode) {
 
@@ -156,9 +159,9 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         case 0x0: { /* ADDI (wrap) */
             reg_t old = v1;
             res = add32(v1, imm_i);
-            if (ISS_TRACE && rd == 3) /* gp */
-                TRACE("pc=%08x ADDI  gp: old=%08x imm=%d -> new=%08x\n",
-                      (unsigned)pc, (unsigned)old, (int)imm_i, (unsigned)res);
+            if (rd == 3) /* gp */
+                TRACE("       ADDI  gp: old=%08x imm=%d -> new=%08x\n",
+                      (unsigned)old, (int)imm_i, (unsigned)res);
             break;
         }
         case 0x2: /* SLTI  */
@@ -183,8 +186,8 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         }
         case 0x5: { /* SRLI/SRAI */
             reg_t shamt = (reg_t)(imm_i & 0x1F);
-            if (GETBITS(raw,31,25) == 0x20) res = (reg_t)((int32_t)v1   >> shamt); /* SRAI */
-            else                              res = (reg_t)((uint32_t)v1 >> shamt); /* SRLI (logical) */
+            if (GETBITS32(raw32,31,25) == 0x20) res = (reg_t)((int32_t)v1   >> shamt); /* SRAI */
+            else                                 res = (reg_t)((uint32_t)v1 >> shamt); /* SRLI (logical) */
             break;
         }
         default: break;
@@ -243,10 +246,8 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         reg_t addr = add32(base, imm_s);
         reg_t v2   = x[rs2];
 
-        if (ISS_TRACE)
-            TRACE("pc=%08x STORE rs1=x%u=%08x imm_s=%d -> addr=%08x funct3=%u\n",
-                  (unsigned)pc, (unsigned)rs1, (unsigned)base,
-                  (int)imm_s, (unsigned)addr, (unsigned)funct3);
+        TRACE("       STORE rs1=x%u=%08x imm_s=%d -> addr=%08x funct3=%u\n",
+              (unsigned)rs1, (unsigned)base, (int)imm_s, (unsigned)addr, (unsigned)funct3);
 
         switch (funct3) {
         case 0x0: { /* SB */
@@ -313,18 +314,18 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     /* ------------------------------ AUIPC ----------------------------- */
     case AUIPC: {
         reg_t res = add32(pc, (int32_t)imm_u);
-        if (ISS_TRACE && rd == 3) /* gp */
-            TRACE("pc=%08x AUIPC gp: pc=%08x imm_u=%08x -> new=%08x\n",
-                  (unsigned)pc, (unsigned)pc, (unsigned)imm_u, (unsigned)res);
+        if (rd == 3) /* gp */
+            TRACE("       AUIPC gp: pc=%08x imm_u=%08x -> new=%08x\n",
+                  (unsigned)pc, (unsigned)imm_u, (unsigned)res);
         if (rd != 0 && rd < 32) x[rd] = res;
         break;
     }
 
     /* ------------------------------- LUI ------------------------------ */
     case LUI: {
-        if (ISS_TRACE && rd == 3) /* gp */
-            TRACE("pc=%08x LUI    gp: imm_u=%08x -> new=%08x\n",
-                  (unsigned)pc, (unsigned)imm_u, (unsigned)imm_u);
+        if (rd == 3) /* gp */
+            TRACE("       LUI   gp: imm_u=%08x -> new=%08x\n",
+                  (unsigned)imm_u, (unsigned)imm_u);
         if (rd != 0 && rd < 32) x[rd] = imm_u;
         break;
     }
