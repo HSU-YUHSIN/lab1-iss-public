@@ -1,246 +1,140 @@
 name: Autograding Tests
-
 'on':
-  - push
-  - repository_dispatch
-
+- push
+- repository_dispatch
 permissions:
   checks: write
   actions: read
   contents: read
-
 jobs:
   run-autograding-tests:
     runs-on: [self-hosted, Linux, X64]
     container: ghcr.io/computer-organization-at-ncku-ee/co-docker-env:latest
     if: github.actor != 'github-classroom[bot]'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Pre-setup
-        run: |
-          git submodule update --init --recursive
-          pwd && ls
-          cd riscv-tests/isa
+    - name: Checkout code
+      uses: actions/checkout@v4
+    - name: Pre-setup
+      run: |
+        git submodule update --init --recursive
+        pwd && ls
+        cd riscv-tests/isa
+        make -j
+    - name: ISS compilation test
+      id: iss-compilation-test
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: ISS compilation test
+        setup-command: |
+          mkdir build && cd build
+          cmake ..
+        command: |
+          cd build
           make -j
-
-      # ---------- Build (graded by classroom action) ----------
-      - name: ISS compilation test
-        id: iss-compilation-test
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: ISS compilation test
-          setup-command: |
-            mkdir -p build && cd build
-            cmake ..
-          command: |
-            cd build
-            make -j
-          timeout: 10
-          max-score: 10
-
-      # ---------- OP ----------
-      - name: RV32I OP
-        id: rv32i-op
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I OP
-          command: |
-            cd build
-            ctest -R "^OP_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 15
-
-      - name: Save OP logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.OP.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.OP.log || true
-
-      # ---------- OPIMM ----------
-      - name: RV32I OPIMM
-        id: rv32i-opimm
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I OPIMM
-          command: |
-            cd build
-            ctest -R "^OPIMM_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 15
-
-      - name: Save OPIMM logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.OPIMM.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.OPIMM.log || true
-
-      # ---------- LOAD ----------
-      - name: RV32I LOAD
-        id: rv32i-load
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I LOAD
-          command: |
-            cd build
-            ctest -R "^LOAD_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 8
-
-      - name: Save LOAD logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.LOAD.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.LOAD.log || true
-
-      # ---------- STORE ----------
-      - name: RV32I STORE
-        id: rv32i-store
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I STORE
-          command: |
-            cd build
-            ctest -R "^STORE_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 8
-
-      - name: Save STORE logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.STORE.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.STORE.log || true
-
-      # ---------- BRANCH ----------
-      - name: RV32I BRANCH
-        id: rv32i-branch
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I BRANCH
-          command: |
-            cd build
-            ctest -R "^BRANCH_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 8
-
-      - name: Save BRANCH logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.BRANCH.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.BRANCH.log || true
-
-      # ---------- JAL ----------
-      - name: RV32I JAL
-        id: rv32i-jal
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I JAL
-          command: |
-            cd build
-            ctest -R "^JAL_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 4
-
-      - name: Save JAL logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.JAL.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.JAL.log || true
-
-      # ---------- JALR ----------
-      - name: RV32I JALR
-        id: rv32i-jalr
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I JALR
-          command: |
-            cd build
-            ctest -R "^JALR_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 4
-
-      - name: Save JALR logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.JALR.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.JALR.log || true
-
-      # ---------- LUI ----------
-      - name: RV32I LUI
-        id: rv32i-lui
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I LUI
-          command: |
-            cd build
-            ctest -R "^LUI_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 4
-
-      - name: Save LUI logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.LUI.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.LUI.log || true
-
-      # ---------- AUIPC ----------
-      - name: RV32I AUIPC
-        id: rv32i-auipc
-        uses: classroom-resources/autograding-command-grader@v1
-        with:
-          test-name: RV32I AUIPC
-          command: |
-            cd build
-            ctest -R "^AUIPC_[a-z]+" --output-on-failure -VV
-          timeout: 10
-          max-score: 4
-
-      - name: Save AUIPC logs
-        if: ${{ always() }}
-        run: |
-          test -f build/Testing/Temporary/LastTest.log && cp build/Testing/Temporary/LastTest.log build/Testing/Temporary/LastTest.AUIPC.log || true
-          test -f build/Testing/Temporary/LastTestsFailed.log && cp build/Testing/Temporary/LastTestsFailed.log build/Testing/Temporary/LastTestsFailed.AUIPC.log || true
-
-      # ---------- Print snapshots in job output ----------
-      - name: Print snapshots of collected logs
-        if: ${{ always() }}
-        run: |
-          for f in build/Testing/Temporary/LastTest.*.log; do
-            echo "===== $f ====="; sed -n '1,400p' "$f" || true; echo; echo;
-          done
-          for f in build/Testing/Temporary/LastTestsFailed.*.log; do
-            echo "===== $f ====="; sed -n '1,400p' "$f" || true; echo; echo;
-          done
-
-      # ---------- Upload all logs ----------
-      - name: Upload CTest logs
-        if: ${{ always() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ctest-logs
-          path: |
-            build/Testing/Temporary/LastTest.log
-            build/Testing/Temporary/LastTestsFailed.log
-            build/Testing/Temporary/CTestCostData.txt
-            build/Testing/Temporary/CTest*.xml
-            build/Testing/Temporary/LastTest.*.log
-            build/Testing/Temporary/LastTestsFailed.*.log
-          if-no-files-found: warn
-
-      # ---------- Autograding reporter (keep original env wiring) ----------
-      - name: Autograding Reporter
-        uses: classroom-resources/autograding-grading-reporter@v1
-        env:
-          ISS-COMPILATION-TEST_RESULTS: "${{ steps.iss-compilation-test.outputs.result }}"
-          RV32I-OP_RESULTS:             "${{ steps.rv32i-op.outputs.result }}"
-          RV32I-OPIMM_RESULTS:          "${{ steps.rv32i-opimm.outputs.result }}"
-          RV32I-LOAD_RESULTS:           "${{ steps.rv32i-load.outputs.result }}"
-          RV32I-STORE_RESULTS:          "${{ steps.rv32i-store.outputs.result }}"
-          RV32I-BRANCH_RESULTS:         "${{ steps.rv32i-branch.outputs.result }}"
-          RV32I-JAL_RESULTS:            "${{ steps.rv32i-jal.outputs.result }}"
-          RV32I-JALR_RESULTS:           "${{ steps.rv32i-jalr.outputs.result }}"
-          RV32I-LUI_RESULTS:            "${{ steps.rv32i-lui.outputs.result }}"
-          RV32I-AUIPC_RESULTS:          "${{ steps.rv32i-auipc.outputs.result }}"
-        with:
-          runners: iss-compilation-test,rv32i-op,rv32i-opimm,rv32i-load,rv32i-store,rv32i-branch,rv32i-jal,rv32i-jalr,rv32i-lui,rv32i-auipc
+        timeout: 10
+        max-score: 10
+    - name: RV32I OP
+      id: rv32i-op
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I OP
+        command: |
+          cd build
+          ctest -R "^OP_[a-z]+"
+        timeout: 10
+        max-score: 15
+    - name: RV32I OPIMM
+      id: rv32i-opimm
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I OPIMM
+        command: |
+          cd build
+          ctest -R "^OPIMM_[a-z]+"
+        timeout: 10
+        max-score: 15
+    - name: RV32I LOAD
+      id: rv32i-load
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I LOAD
+        command: |
+          cd build
+          ctest -R "^LOAD_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I STORE
+      id: rv32i-store
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I STORE
+        command: |
+          cd build
+          ctest -R "^STORE_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I BRANCH
+      id: rv32i-branch
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I BRANCH
+        command: |
+          cd build
+          ctest -R "^BRANCH_[a-z]+"
+        timeout: 10
+        max-score: 8
+    - name: RV32I JAL
+      id: rv32i-jal
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I JAL
+        command: |
+          cd build
+          ctest -R "^JAL_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I JALR
+      id: rv32i-jalr
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I JALR
+        command: |
+          cd build
+          ctest -R "^JALR_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I LUI
+      id: rv32i-lui
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I LUI
+        command: |
+          cd build
+          ctest -R "^LUI_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: RV32I AUIPC
+      id: rv32i-auipc
+      uses: classroom-resources/autograding-command-grader@v1
+      with:
+        test-name: RV32I AUIPC
+        command: |
+          cd build
+          ctest -R "^AUIPC_[a-z]+"
+        timeout: 10
+        max-score: 4
+    - name: Autograding Reporter
+      uses: classroom-resources/autograding-grading-reporter@v1
+      env:
+        ISS-COMPILATION-TEST_RESULTS: "${{steps.iss-compilation-test.outputs.result}}"
+        RV32I-OP_RESULTS: "${{steps.rv32i-op.outputs.result}}"
+        RV32I-OPIMM_RESULTS: "${{steps.rv32i-opimm.outputs.result}}"
+        RV32I-LOAD_RESULTS: "${{steps.rv32i-load.outputs.result}}"
+        RV32I-STORE_RESULTS: "${{steps.rv32i-store.outputs.result}}"
+        RV32I-BRANCH_RESULTS: "${{steps.rv32i-branch.outputs.result}}"
+        RV32I-JAL_RESULTS: "${{steps.rv32i-jal.outputs.result}}"
+        RV32I-JALR_RESULTS: "${{steps.rv32i-jalr.outputs.result}}"
+        RV32I-LUI_RESULTS: "${{steps.rv32i-lui.outputs.result}}"
+        RV32I-AUIPC_RESULTS: "${{steps.rv32i-auipc.outputs.result}}"
+      with:
+        runners: iss-compilation-test,rv32i-op,rv32i-opimm,rv32i-load,rv32i-store,rv32i-branch,rv32i-jal,rv32i-jalr,rv32i-lui,rv32i-auipc
