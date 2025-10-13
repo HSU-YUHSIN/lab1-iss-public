@@ -9,6 +9,23 @@
 #include <stddef.h>
 #include <assert.h>
 #include <stdint.h>
+#include <stdio.h>
+
+/* ================================================================
+ *                CONFIG: enable/disable one-line tracing
+ * ================================================================ */
+#ifndef ISS_TRACE
+#define ISS_TRACE 1   /* set to 0 to silence tracing */
+#endif
+
+#if ISS_TRACE
+#define TRACE(fmt, ...) fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__)
+#else
+#define TRACE(fmt, ...) do{}while(0)
+#endif
+
+/* Make sure reg_t is 32-bit (RV32) */
+typedef char static_assert_reg_t_is_32[(sizeof(reg_t) == 4) ? 1 : -1];
 
 /* ------------------------- helpers -------------------------- */
 
@@ -133,9 +150,15 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         reg_t res = 0;
 
         switch (funct3) {
-        case 0x0: /* ADDI (wrap) */
+        case 0x0: { /* ADDI (wrap) */
+            reg_t old = v1;
             res = add32(v1, imm_i);
+            if (rd == 3) { /* gp */
+                TRACE("pc=%08x ADDI  gp: old=%08x imm=%d -> new=%08x\n",
+                      (unsigned)pc, (unsigned)old, (int)imm_i, (unsigned)res);
+            }
             break;
+        }
         case 0x2: /* SLTI  */
             res = ((int32_t)v1 < imm_i) ? 1u : 0u;
             break;
@@ -215,8 +238,13 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     /* --------------------------- STORE (S) --------------------------- */
     case STORE: {
-        reg_t addr = add32(x[rs1], imm_s);
+        reg_t base = x[rs1];
+        reg_t addr = add32(base, imm_s);
         reg_t v2   = x[rs2];
+
+        TRACE("pc=%08x STORE rs1=x%u=%08x imm_s=%d -> addr=%08x funct3=%u\n",
+              (unsigned)pc, (unsigned)rs1, (unsigned)base,
+              (int)imm_s, (unsigned)addr, (unsigned)funct3);
 
         switch (funct3) {
         case 0x0: { /* SB */
@@ -283,12 +311,21 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     /* ----------------------------- AUIPC ----------------------------- */
     case AUIPC: {
-        if (rd != 0 && rd < 32) x[rd] = add32(pc, (int32_t)imm_u);
+        reg_t res = add32(pc, (int32_t)imm_u);
+        if (rd == 3) { /* gp */
+            TRACE("pc=%08x AUIPC gp: pc=%08x imm_u=%08x -> new=%08x\n",
+                  (unsigned)pc, (unsigned)pc, (unsigned)imm_u, (unsigned)res);
+        }
+        if (rd != 0 && rd < 32) x[rd] = res;
         break;
     }
 
     /* ------------------------------ LUI ------------------------------ */
     case LUI: {
+        if (rd == 3) { /* gp */
+            TRACE("pc=%08x LUI    gp: imm_u=%08x -> new=%08x\n",
+                  (unsigned)pc, (unsigned)imm_u, (unsigned)imm_u);
+        }
         if (rd != 0 && rd < 32) x[rd] = imm_u;
         break;
     }
