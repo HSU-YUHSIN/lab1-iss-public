@@ -12,40 +12,40 @@
 #include <stdio.h>
 
 /* ================================================================
- *                CONFIG: enable/disable one-line tracing
+ *                TRACE (set to 1 to enable)
+ *   Build with: -DISS_TRACE=1   (or edit the define below)
  * ================================================================ */
 #ifndef ISS_TRACE
-#define ISS_TRACE 1   /* set to 0 to silence tracing */
+#define ISS_TRACE 0
 #endif
 
 #if ISS_TRACE
-#define TRACE(fmt, ...) do { \
-  fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__); \
-  fflush(stderr); \
-} while (0)
+  #define TRACE(fmt, ...) do { fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__); fflush(stderr); } while (0)
 #else
-#define TRACE(fmt, ...) do{}while(0)
+  #define TRACE(fmt, ...) do{}while(0)
 #endif
 
-/* Make sure reg_t is 32-bit (RV32) */
+/* Sanity: RV32 expects 32-bit reg_t */
 typedef char static_assert_reg_t_is_32[(sizeof(reg_t) == 4) ? 1 : -1];
 
-/* ------------------------- helpers -------------------------- */
+/* --------------------------- helpers --------------------------- */
 
 /* 32-bit wrap-safe add: (a + b) mod 2^32 regardless of sign */
 static inline reg_t add32(reg_t a, int32_t b) {
     return (reg_t)((uint32_t)a + (uint32_t)b);
 }
 
-#define GETBITS(x,hi,lo) (((x) >> (lo)) & ((uint32_t)((1u << ((hi)-(lo)+1)) - 1u)))
+/* bit slicing & sign-extension */
+#define GETBITS(x,hi,lo) (((x) >> (lo)) & (uint32_t)((1u << ((hi)-(lo)+1)) - 1u))
 #define SEXT(val,bits)   ((int32_t)((int32_t)((uint32_t)(val) << (32-(bits))) >> (32-(bits))))
 
-/* --------------------------- Fetch --------------------------- */
+/* ----------------------------- Fetch ---------------------------- */
 static inst_fields_t Core_fetch(Core *self) {
     byte_t inst_in_bytes[4] = {0};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
 
     inst_fields_t ret = (inst_fields_t){0};
+    /* little-endian pack -> raw */
     ret.raw |= (reg_t)inst_in_bytes[0];
     ret.raw |= (reg_t)inst_in_bytes[1] << 8;
     ret.raw |= (reg_t)inst_in_bytes[2] << 16;
@@ -53,7 +53,7 @@ static inst_fields_t Core_fetch(Core *self) {
     return ret;
 }
 
-/* --------------------------- Decode -------------------------- */
+/* ----------------------------- Decode --------------------------- */
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     (void)self;
     reg_t opcode = inst_fields.raw & 0x7Fu;
@@ -74,9 +74,9 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     return ret;
 }
 
-/* -------------------- Execute + Commit ----------------------- */
+/* ------------------------- Execute + Commit ---------------------- */
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
-    (void)inst_enum; /* we re-decode from raw */
+    (void)inst_enum; /* re-decode from raw for simplicity */
 
     reg_t pc = self->arch_state.current_pc;
 
@@ -93,9 +93,9 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     reg_t *x = self->arch_state.x;
 
-    /* immediates */
+    /* immediates (RV32I) */
     int32_t imm_i = SEXT(GETBITS(raw, 31, 20), 12);
-    int32_t imm_s = SEXT(((GETBITS(raw, 31,25) << 5) | GETBITS(raw, 11,7)), 12);
+    int32_t imm_s = SEXT(((GETBITS(raw,31,25) << 5) | GETBITS(raw,11,7)), 12);
     int32_t imm_b = SEXT(((GETBITS(raw,31,31) << 12) |
                           (GETBITS(raw, 7, 7) << 11) |
                           (GETBITS(raw,30,25) << 5 ) |
@@ -108,7 +108,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     switch (opcode) {
 
-    /* -------------------------- R-type (OP) -------------------------- */
+    /* --------------------------- R-type (OP) -------------------------- */
     case OP: {
         reg_t v1 = x[rs1], v2 = x[rs2];
         reg_t res = 0;
@@ -118,26 +118,26 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             if (funct7 == 0x20) res = (reg_t)((uint32_t)v1 - (uint32_t)v2); /* SUB */
             else                 res = (reg_t)((uint32_t)v1 + (uint32_t)v2); /* ADD */
             break;
-        case 0x1: /* SLL  */
+        case 0x1: /* SLL */
             res = v1 << (v2 & 31u);
             break;
-        case 0x2: /* SLT  */
+        case 0x2: /* SLT */
             res = ((int32_t)v1 < (int32_t)v2) ? 1u : 0u;
             break;
         case 0x3: /* SLTU */
             res = ((uint32_t)v1 < (uint32_t)v2) ? 1u : 0u;
             break;
-        case 0x4: /* XOR  */
+        case 0x4: /* XOR */
             res = v1 ^ v2;
             break;
         case 0x5: /* SRL/SRA */
             if (funct7 == 0x20) res = (reg_t)((int32_t)v1   >> (v2 & 31u));  /* SRA (arith) */
             else                 res = (reg_t)((uint32_t)v1 >> (v2 & 31u));  /* SRL (logical) */
             break;
-        case 0x6: /* OR   */
+        case 0x6: /* OR  */
             res = v1 | v2;
             break;
-        case 0x7: /* AND  */
+        case 0x7: /* AND */
             res = v1 & v2;
             break;
         default: break;
@@ -147,7 +147,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* ------------------------ I-type (OP-IMM) ------------------------ */
+    /* ------------------------- I-type (OP-IMM) ------------------------ */
     case OP_IMM: {
         reg_t v1 = x[rs1];
         reg_t res = 0;
@@ -156,10 +156,9 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         case 0x0: { /* ADDI (wrap) */
             reg_t old = v1;
             res = add32(v1, imm_i);
-            if (rd == 3) { /* gp */
+            if (ISS_TRACE && rd == 3) /* gp */
                 TRACE("pc=%08x ADDI  gp: old=%08x imm=%d -> new=%08x\n",
                       (unsigned)pc, (unsigned)old, (int)imm_i, (unsigned)res);
-            }
             break;
         }
         case 0x2: /* SLTI  */
@@ -184,8 +183,8 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         }
         case 0x5: { /* SRLI/SRAI */
             reg_t shamt = (reg_t)(imm_i & 0x1F);
-            if (GETBITS(raw, 31, 25) == 0x20) res = (reg_t)((int32_t)v1   >> shamt); /* SRAI */
-            else                               res = (reg_t)((uint32_t)v1 >> shamt); /* SRLI (logical) */
+            if (GETBITS(raw,31,25) == 0x20) res = (reg_t)((int32_t)v1   >> shamt); /* SRAI */
+            else                              res = (reg_t)((uint32_t)v1 >> shamt); /* SRLI (logical) */
             break;
         }
         default: break;
@@ -195,10 +194,9 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* --------------------------- LOAD (I) ---------------------------- */
+    /* ---------------------------- LOAD (I) ---------------------------- */
     case LOAD: {
         reg_t addr = add32(x[rs1], imm_i);
-
         switch (funct3) {
         case 0x0: { /* LB */
             byte_t b[1];
@@ -239,15 +237,16 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* --------------------------- STORE (S) --------------------------- */
+    /* ---------------------------- STORE (S) --------------------------- */
     case STORE: {
         reg_t base = x[rs1];
         reg_t addr = add32(base, imm_s);
         reg_t v2   = x[rs2];
 
-        TRACE("pc=%08x STORE rs1=x%u=%08x imm_s=%d -> addr=%08x funct3=%u\n",
-              (unsigned)pc, (unsigned)rs1, (unsigned)base,
-              (int)imm_s, (unsigned)addr, (unsigned)funct3);
+        if (ISS_TRACE)
+            TRACE("pc=%08x STORE rs1=x%u=%08x imm_s=%d -> addr=%08x funct3=%u\n",
+                  (unsigned)pc, (unsigned)rs1, (unsigned)base,
+                  (int)imm_s, (unsigned)addr, (unsigned)funct3);
 
         switch (funct3) {
         case 0x0: { /* SB */
@@ -278,11 +277,10 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* -------------------------- BRANCH (B) --------------------------- */
+    /* --------------------------- BRANCH (B) --------------------------- */
     case BRANCH: {
         reg_t v1 = x[rs1], v2 = x[rs2];
         int take = 0;
-
         switch (funct3) {
         case 0x0: take = (v1 == v2); break;                           /* BEQ  */
         case 0x1: take = (v1 != v2); break;                           /* BNE  */
@@ -296,14 +294,14 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* ----------------------------- JAL ------------------------------- */
+    /* ------------------------------ JAL ------------------------------- */
     case JAL: {
         if (rd != 0 && rd < 32) x[rd] = add32(pc, 4);
         self->new_pc = add32(pc, imm_j);
         break;
     }
 
-    /* ----------------------------- JALR ------------------------------ */
+    /* ------------------------------ JALR ------------------------------ */
     case JALR: {
         reg_t target = add32(x[rs1], imm_i);
         target &= ~1u; /* clear bit 0 */
@@ -312,29 +310,27 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         break;
     }
 
-    /* ----------------------------- AUIPC ----------------------------- */
+    /* ------------------------------ AUIPC ----------------------------- */
     case AUIPC: {
         reg_t res = add32(pc, (int32_t)imm_u);
-        if (rd == 3) { /* gp */
+        if (ISS_TRACE && rd == 3) /* gp */
             TRACE("pc=%08x AUIPC gp: pc=%08x imm_u=%08x -> new=%08x\n",
                   (unsigned)pc, (unsigned)pc, (unsigned)imm_u, (unsigned)res);
-        }
         if (rd != 0 && rd < 32) x[rd] = res;
         break;
     }
 
-    /* ------------------------------ LUI ------------------------------ */
+    /* ------------------------------- LUI ------------------------------ */
     case LUI: {
-        if (rd == 3) { /* gp */
+        if (ISS_TRACE && rd == 3) /* gp */
             TRACE("pc=%08x LUI    gp: imm_u=%08x -> new=%08x\n",
                   (unsigned)pc, (unsigned)imm_u, (unsigned)imm_u);
-        }
         if (rd != 0 && rd < 32) x[rd] = imm_u;
         break;
     }
 
     default:
-        /* illegal/unsupported → NOP; PC already advanced */
+        /* illegal/unsupported → NOP; PC already advanced by +4 */
         break;
     }
 
@@ -342,12 +338,12 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     x[0] = 0;
 }
 
-/* -------------------------- PC update ------------------------- */
+/* ---------------------------- PC update --------------------------- */
 static void Core_update_pc(Core *self) {
     self->arch_state.current_pc = self->new_pc;
 }
 
-/* ---------------------------- Tick ---------------------------- */
+/* ------------------------------- Tick ------------------------------ */
 DECLARE_TICK_TICK(Core) {
     Core *self_               = container_of(self, Core, super);
     inst_fields_t inst_fields = Core_fetch(self_);
@@ -356,15 +352,17 @@ DECLARE_TICK_TICK(Core) {
     Core_update_pc(self_);
 }
 
-/* ------------------------ ctor / dtor ------------------------- */
+/* ---------------------------- ctor / dtor --------------------------- */
 void Core_ctor(Core *self) {
     assert(self != NULL);
 
+    /* initialize memory map (no devices yet) */
     MemoryMap_ctor(&self->mem_map);
 
+    /* init base class (Tick) */
     Tick_ctor(&self->super);
     static struct TickVtbl const vtbl = { .tick = SIGNATURE_TICK_TICK(Core) };
-    self->super.vtbl                  = &vtbl;
+    self->super.vtbl = &vtbl;
 }
 
 void Core_dtor(Core *self) {
