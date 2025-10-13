@@ -8,13 +8,19 @@
 
 #include <stddef.h>
 #include <assert.h>
+#include <stdint.h>
 
-// ISS Fetch stage
+/* ---- 32-bit wrap-safe address add: base (u32) + off (i32) ---- */
+static inline reg_t add_addr_u32(reg_t base, int32_t off) {
+    return (reg_t)((uint32_t)base + (uint32_t)off); // modulo 2^32, well-defined
+}
+
+/* --------------------------- Fetch --------------------------- */
 static inst_fields_t Core_fetch(Core *self) {
     // fetch instruction according to self->arch_state.current_pc
     byte_t inst_in_bytes[4] = {};
     MemoryMap_generic_load(&self->mem_map, self->arch_state.current_pc, 4, inst_in_bytes);
-    // transformation
+    // little-endian pack into raw
     inst_fields_t ret = {};
     ret.raw |= (reg_t)inst_in_bytes[0];
     ret.raw |= (reg_t)inst_in_bytes[1] << 8;
@@ -23,7 +29,7 @@ static inst_fields_t Core_fetch(Core *self) {
     return ret;
 }
 
-// ISS decode stage
+/* --------------------------- Decode -------------------------- */
 static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     (void)self;
     reg_t opcode = inst_fields.raw & 0x7F;
@@ -44,14 +50,14 @@ static inst_enum_t Core_decode(Core *self, inst_fields_t inst_fields) {
     return ret;
 }
 
-// ISS execute and commit stage (two-in-one)
+/* -------------------- Execute + Commit ----------------------- */
 static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst_enum) {
-    (void)inst_enum; // We decode directly from raw here; enum is not needed.
+    (void)inst_enum; // We decode from raw directly
 
     // default next PC = PC + 4
     self->new_pc = self->arch_state.current_pc + 4;
 
-    // ----- helpers (local macros) -----
+    /* helpers */
     #define GETBITS(x,hi,lo) (((x) >> (lo)) & ((1u << ((hi)-(lo)+1)) - 1u))
     #define SEXT(val,bits)   ((int32_t)((int32_t)((uint32_t)(val) << (32-(bits))) >> (32-(bits))))
 
@@ -85,7 +91,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         21
     );
 
-    // ----- execute by opcode -----
     switch (opcode) {
 
     /* -------------------------- R-type (OP) -------------------------- */
@@ -142,7 +147,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             res = ((int32_t)v1 < imm_i) ? 1u : 0u;
             break;
         case 0x3: // SLTIU
-            res = (v1 < (reg_t)imm_i) ? 1u : 0u; // imm_i is sign-extended then cast
+            res = (v1 < (reg_t)imm_i) ? 1u : 0u; // compare as unsigned to zero-extended imm
             break;
         case 0x4: // XORI
             res = v1 ^ (reg_t)imm_i;
@@ -160,8 +165,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         }
         case 0x5: { // SRLI/SRAI
             reg_t shamt = (reg_t)(imm_i & 0x1F);
-            // Distinguish via funct7 (bits [31:25])
-            if (GETBITS(raw, 31, 25) == 0x20) // SRAI
+            if (GETBITS(raw, 31, 25) == 0x20) // SRAI (funct7=0100000)
                 res = (reg_t)((int32_t)v1 >> shamt);
             else                               // SRLI
                 res = v1 >> shamt;
@@ -178,7 +182,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     /* --------------------------- LOAD (I) ---------------------------- */
     case LOAD: { // 0x03
-        reg_t addr = (reg_t)((int32_t)x[rs1] + imm_i);
+        reg_t addr = add_addr_u32(x[rs1], imm_i); // wrap-safe
 
         switch (funct3) {
         case 0x0: { // LB
@@ -217,7 +221,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             break;
         }
         default:
-            // unsupported load size
             break;
         }
         break;
@@ -225,7 +228,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
 
     /* --------------------------- STORE (S) --------------------------- */
     case STORE: { // 0x23
-        reg_t addr = (reg_t)((int32_t)x[rs1] + imm_s);
+        reg_t addr = add_addr_u32(x[rs1], imm_s); // wrap-safe
         reg_t v2   = x[rs2];
 
         switch (funct3) {
@@ -253,7 +256,6 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
             break;
         }
         default:
-            // unsupported store size
             break;
         }
         break;
@@ -273,20 +275,20 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
         case 0x7: take = (v1 >= v2); break;                          // BGEU
         default: break;
         }
-        if (take) self->new_pc = (reg_t)((int32_t)pc + imm_b);
+        if (take) self->new_pc = add_addr_u32(pc, imm_b);
         break;
     }
 
     /* ----------------------------- JAL ------------------------------- */
     case JAL: { // 0x6F
         if (rd != 0 && rd < 32) x[rd] = pc + 4;
-        self->new_pc = (reg_t)((int32_t)pc + imm_j);
+        self->new_pc = add_addr_u32(pc, imm_j);
         break;
     }
 
     /* ----------------------------- JALR ------------------------------ */
     case JALR: { // 0x67
-        reg_t target = (reg_t)((int32_t)x[rs1] + imm_i);
+        reg_t target = add_addr_u32(x[rs1], imm_i);
         target &= ~1u; // clear bit 0
         if (rd != 0 && rd < 32) x[rd] = pc + 4;
         self->new_pc = target;
@@ -317,10 +319,12 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     #undef SEXT
 }
 
+/* -------------------------- PC update ------------------------- */
 static void Core_update_pc(Core *self) {
     self->arch_state.current_pc = self->new_pc;
 }
 
+/* ---------------------------- Tick ---------------------------- */
 DECLARE_TICK_TICK(Core) {
     Core *self_               = container_of(self, Core, super);
     inst_fields_t inst_fields = Core_fetch(self_);
@@ -329,6 +333,7 @@ DECLARE_TICK_TICK(Core) {
     Core_update_pc(self_);
 }
 
+/* ------------------------ ctor / dtor ------------------------- */
 void Core_ctor(Core *self) {
     assert(self != NULL);
 
