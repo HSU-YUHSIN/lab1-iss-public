@@ -19,7 +19,10 @@
 #endif
 
 #if ISS_TRACE
-#define TRACE(fmt, ...) fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__)
+#define TRACE(fmt, ...) do { \
+  fprintf(stderr, "[TRACE] " fmt, ##__VA_ARGS__); \
+  fflush(stderr); \
+} while (0)
 #else
 #define TRACE(fmt, ...) do{}while(0)
 #endif
