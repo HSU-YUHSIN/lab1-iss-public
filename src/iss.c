@@ -62,10 +62,12 @@ int ISS_ctor(ISS **self, const char *elf_file_name) {
     };
     Core_add_device(&self_->core, text_buffer_mmap_unit);
 
-    // add halt flag into core's mmap
-    mmap_unit_t halt_mmap_unit = { .addr_bound = { .first = HALT_MMAP_BASE,
-                                                   .second = HALT_MMAP_BASE + HALT_SIZE },
-                                   .device_ptr = (AbstractMem *)&self_->halt_mmio };
+// iss.c
+mmap_unit_t halt_mmap_unit = {
+    .addr_bound = { .first = HALT_MMAP_BASE,
+                    .second = HALT_MMAP_BASE + HALT_SIZE - 1 },  // <= here
+    .device_ptr = &self_->halt_mmio.super,
+};
     Core_add_device(&self_->core, halt_mmap_unit);
 
     // load ELF into main memory, and initialize PC
