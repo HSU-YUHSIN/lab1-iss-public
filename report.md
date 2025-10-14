@@ -84,5 +84,5 @@ In this section, please write a short reflection about the lab:
 ### You Report
 
 1. I learned how to make a simple ISS in C for decoing and executing RISC-V instructions. Also, I learned how the computer read from the binary code and execute then deocode and execute them.
-2. There are so many instructions so I need to write many cases, any missing could leads to some bug. I solve it by writing carefully.
+2. There are so many instructions so I need to write many cases, any missing could leads to some bug. I solve it by test multiple times and see what the test result is then fix them.
 3. The explainatons and notes TA gave in class really helps alots, so I can save some time to watch anime.
