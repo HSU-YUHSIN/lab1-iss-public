@@ -69,9 +69,7 @@ static void Core_execute(Core *self, inst_fields_t inst_fields, inst_enum_t inst
     reg_t rs2    = GETBITS(raw, 24, 20);
     reg_t funct7 = GETBITS(raw, 31, 25);
 
-    /* NOTE: if your arch_state uses a different name than `x`,
-       change the next line to that (e.g., gpr/regs) and keep all x[...] below. */
-    reg_t *x = self->arch_state.gpr ? self->arch_state.gpr : self->arch_state.x;
+    reg_t *x = self->arch_state.gpr;
     reg_t pc = self->arch_state.current_pc;
 
     // immediates (RV32I)
