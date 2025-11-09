@@ -4,7 +4,11 @@
 #include "common.h"
 #include "rom.h"
 
+#ifdef __APPLE__
+#include "elf_compat.h"
+#else
 #include <elf.h>
+#endif
 #include <stdint.h>
 #include <stddef.h>
 #include <stdio.h>
